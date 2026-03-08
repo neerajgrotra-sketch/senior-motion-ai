@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
+import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 import type { DebugState } from '@/lib/poseTypes';
 import {
@@ -51,17 +52,22 @@ export default function PoseTrackerPage() {
   }, []);
 
   async function ensureDetector() {
-    if (!detectorRef.current) {
-      detectorRef.current = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet,
-        {
-          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          enableSmoothing: true
-        }
-      );
-    }
-    return detectorRef.current;
+  if (!detectorRef.current) {
+
+    await tf.ready();
+    await tf.setBackend('webgl');
+
+    detectorRef.current = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      {
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        enableSmoothing: true
+      }
+    );
   }
+
+  return detectorRef.current;
+}
 
   async function getCameraStream() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
