@@ -52,29 +52,27 @@ export default function PoseTrackerPage() {
     };
   }, []);
 
-async function ensureDetector() {
-  if (!detectorRef.current) {
-    await tf.ready();
-
-    const backend = tf.getBackend();
-    if (backend !== 'webgl') {
-      await tf.setBackend('webgl');
+  async function ensureDetector() {
+    if (!detectorRef.current) {
       await tf.ready();
+
+      const currentBackend = tf.getBackend();
+      if (currentBackend !== 'webgl') {
+        await tf.setBackend('webgl');
+        await tf.ready();
+      }
+
+      detectorRef.current = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        {
+          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+          enableSmoothing: true
+        }
+      );
     }
 
-    console.log('TF backend:', tf.getBackend());
-
-    detectorRef.current = await poseDetection.createDetector(
-      poseDetection.SupportedModels.MoveNet,
-      {
-        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-        enableSmoothing: true
-      }
-    );
+    return detectorRef.current;
   }
-
-  return detectorRef.current;
-}
 
   async function getCameraStream() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -110,18 +108,14 @@ async function ensureDetector() {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         return stream;
       } catch (err) {
-  console.error('Camera/model start failed:', err);
+        lastError = err;
+        console.error('Camera attempt failed:', constraints, err);
+      }
+    }
 
-  let message = 'Unknown error';
-
-  if (err instanceof Error) {
-    message = `${err.name}: ${err.message}`;
-  } else if (typeof err === 'string') {
-    message = err;
+    throw lastError instanceof Error ? lastError : new Error('Could not access camera.');
   }
 
-  setError(message);
-}
   async function startCamera() {
     try {
       setError('');
@@ -151,16 +145,17 @@ async function ensureDetector() {
       if (animationRef.current != null) {
         cancelAnimationFrame(animationRef.current);
       }
+
       animationRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
-      console.error('Camera start failed:', err);
+      console.error('Camera/model start failed:', err);
 
-      const message =
-        err instanceof DOMException
-          ? `${err.name}: ${err.message}`
-          : err instanceof Error
-          ? err.message
-          : 'Unknown camera error';
+      let message = 'Unknown error';
+      if (err instanceof Error) {
+        message = `${err.name}: ${err.message}`;
+      } else if (typeof err === 'string') {
+        message = err;
+      }
 
       setError(message);
     }
@@ -194,6 +189,7 @@ async function ensureDetector() {
       confidence: 0,
       visibleKeypoints: 0
     });
+
     clearCanvas();
   }
 
@@ -232,10 +228,11 @@ async function ensureDetector() {
 
     if (ts - lastRunRef.current >= DETECTION_INTERVAL_MS) {
       lastRunRef.current = ts;
-      const poses = await detector.estimatePoses(video, { flipHorizontal: true });
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      const poses = await detector.estimatePoses(video, { flipHorizontal: true });
       const pose = poses[0];
+
       if (pose?.keypoints?.length) {
         const pointMap = keypointsToMap(pose.keypoints);
         const built = buildPoseTrack(PERSON_ID, pointMap);
@@ -245,7 +242,7 @@ async function ensureDetector() {
           activeTrackRef.current = smoothed;
           lastSeenRef.current = ts;
 
-          drawTrack(ctx, smoothed, canvas.width, canvas.height);
+          drawTrack(ctx, smoothed, canvas.height);
 
           setDebug((prev) => ({
             ...prev,
@@ -268,13 +265,13 @@ async function ensureDetector() {
             visibleKeypoints: 0
           }));
         } else if (activeTrackRef.current) {
-          drawTrack(ctx, activeTrackRef.current, canvas.width, canvas.height);
+          drawTrack(ctx, activeTrackRef.current, canvas.height);
         }
       }
     } else {
       clearCanvas();
       if (activeTrackRef.current) {
-        drawTrack(ctx, activeTrackRef.current, canvas.width, canvas.height);
+        drawTrack(ctx, activeTrackRef.current, canvas.height);
       }
     }
 
@@ -292,7 +289,6 @@ async function ensureDetector() {
   function drawTrack(
     ctx: CanvasRenderingContext2D,
     track: NonNullable<typeof activeTrackRef.current>,
-    _width: number,
     height: number
   ) {
     ctx.save();
@@ -310,10 +306,12 @@ async function ensureDetector() {
     if (showSkeleton) {
       ctx.strokeStyle = '#60a5fa';
       ctx.lineWidth = 4;
+
       for (const [a, b] of SKELETON_EDGES) {
         const p1 = track.keypoints[a];
         const p2 = track.keypoints[b];
         if (!p1 || !p2 || p1.score < 0.25 || p2.score < 0.25) continue;
+
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
@@ -324,6 +322,7 @@ async function ensureDetector() {
     if (showDots) {
       for (const kp of Object.values(track.keypoints)) {
         if (kp.score < 0.25) continue;
+
         ctx.fillStyle = '#f97316';
         ctx.beginPath();
         ctx.arc(kp.x, kp.y, 6, 0, Math.PI * 2);
@@ -341,10 +340,12 @@ async function ensureDetector() {
   return (
     <main style={{ minHeight: '100vh', padding: 24 }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        <h1 style={{ marginTop: 0, marginBottom: 8 }}>Overshoot V1: Standing Person Pose Tracker</h1>
+        <h1 style={{ marginTop: 0, marginBottom: 8 }}>
+          Overshoot V1: Standing Person Pose Tracker
+        </h1>
         <p style={{ marginTop: 0, color: '#b6c2df' }}>
-          Detect one standing person, assign a stable ID, and render a stick figure that follows body
-          movement in real time.
+          Detect one standing person, assign a stable ID, and render a stick figure that follows
+          body movement in real time.
         </p>
 
         <div
@@ -388,6 +389,7 @@ async function ensureDetector() {
                   transform: 'scaleX(-1)'
                 }}
               />
+
               {!isRunning && (
                 <div
                   style={{
