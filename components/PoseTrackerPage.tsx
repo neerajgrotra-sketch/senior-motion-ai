@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import '@mediapipe/pose';
-import type { DebugState } from '@/lib/poseTypes';
+import type { DebugState } from '../lib/poseTypes';
 import {
   buildPoseTrack,
   keypointsToMap,
   SKELETON_EDGES,
   smoothPose,
   visibleKeypointCount
-} from '@/lib/poseUtils';
+} from '../lib/poseUtils';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
