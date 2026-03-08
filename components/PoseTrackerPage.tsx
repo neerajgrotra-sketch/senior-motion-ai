@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs-core';
+import '@tensorflow/tfjs-converter';
 import '@tensorflow/tfjs-backend-webgl';
 import type { DebugState } from '@/lib/poseTypes';
 import {
