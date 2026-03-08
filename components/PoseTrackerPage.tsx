@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import '@tensorflow/tfjs-backend-webgl';
 import type { DebugState } from '@/lib/poseTypes';
-import { buildPoseTrack, keypointsToMap, SKELETON_EDGES, smoothPose, visibleKeypointCount } from '@/lib/poseUtils';
+import {
+  buildPoseTrack,
+  keypointsToMap,
+  SKELETON_EDGES,
+  smoothPose,
+  visibleKeypointCount
+} from '@/lib/poseUtils';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
@@ -44,39 +50,102 @@ export default function PoseTrackerPage() {
     };
   }, []);
 
-  async function startCamera() {
-    try {
-      setError('');
-      if (!detectorRef.current) {
-        detectorRef.current = await poseDetection.createDetector(
-          poseDetection.SupportedModels.MoveNet,
-          {
-            modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-            enableSmoothing: true,
-          }
-        );
-      }
+  async function ensureDetector() {
+    if (!detectorRef.current) {
+      detectorRef.current = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        {
+          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+          enableSmoothing: true
+        }
+      );
+    }
+    return detectorRef.current;
+  }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
+  async function getCameraStream() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Camera API not supported in this browser.');
+    }
+
+    const attempts: MediaStreamConstraints[] = [
+      {
         video: {
           facingMode: 'user',
           width: { ideal: VIDEO_WIDTH },
           height: { ideal: VIDEO_HEIGHT }
-        }
-      });
+        },
+        audio: false
+      },
+      {
+        video: {
+          width: { ideal: VIDEO_WIDTH },
+          height: { ideal: VIDEO_HEIGHT }
+        },
+        audio: false
+      },
+      {
+        video: true,
+        audio: false
+      }
+    ];
 
-      streamRef.current = stream;
+    let lastError: unknown = null;
+
+    for (const constraints of attempts) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        return stream;
+      } catch (err) {
+        lastError = err;
+        console.error('Camera attempt failed:', constraints, err);
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Could not access camera.');
+  }
+
+  async function startCamera() {
+    try {
+      setError('');
+
       const video = videoRef.current;
-      if (!video) return;
+      if (!video) {
+        throw new Error('Video element not available.');
+      }
+
+      await ensureDetector();
+
+      const stream = await getCameraStream();
+      streamRef.current = stream;
+
       video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+
       await video.play();
+
       setIsRunning(true);
       lastSeenRef.current = performance.now();
+      lastRunRef.current = 0;
+      frameCountRef.current = 0;
+      lastFpsTickRef.current = performance.now();
+
+      if (animationRef.current != null) {
+        cancelAnimationFrame(animationRef.current);
+      }
       animationRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
-      console.error(err);
-      setError('Could not start the camera. Check browser permissions and confirm you are on HTTPS or localhost.');
+      console.error('Camera start failed:', err);
+
+      const message =
+        err instanceof DOMException
+          ? `${err.name}: ${err.message}`
+          : err instanceof Error
+          ? err.message
+          : 'Unknown camera error';
+
+      setError(message);
     }
   }
 
@@ -85,14 +154,19 @@ export default function PoseTrackerPage() {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     }
+
     if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) track.stop();
+      for (const track of streamRef.current.getTracks()) {
+        track.stop();
+      }
       streamRef.current = null;
     }
+
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
+
     activeTrackRef.current = null;
     setIsRunning(false);
     setDebug({
@@ -118,7 +192,7 @@ export default function PoseTrackerPage() {
     const canvas = canvasRef.current;
     const detector = detectorRef.current;
 
-    if (!video || !canvas || !detector || !isRunning) {
+    if (!video || !canvas || !detector || !streamRef.current) {
       animationRef.current = requestAnimationFrame(renderLoop);
       return;
     }
@@ -153,15 +227,17 @@ export default function PoseTrackerPage() {
           const smoothed = smoothPose(built, activeTrackRef.current, 0.35);
           activeTrackRef.current = smoothed;
           lastSeenRef.current = ts;
+
           drawTrack(ctx, smoothed, canvas.width, canvas.height);
-          setDebug({
-            fps: debug.fps,
+
+          setDebug((prev) => ({
+            ...prev,
             tracking: 'active',
             personDetected: true,
             trackId: smoothed.id,
             confidence: smoothed.confidence,
             visibleKeypoints: visibleKeypointCount(smoothed.keypoints)
-          });
+          }));
         }
       } else {
         if (ts - lastSeenRef.current > LOST_AFTER_MS) {
@@ -180,7 +256,9 @@ export default function PoseTrackerPage() {
       }
     } else {
       clearCanvas();
-      if (activeTrackRef.current) drawTrack(ctx, activeTrackRef.current, canvas.width, canvas.height);
+      if (activeTrackRef.current) {
+        drawTrack(ctx, activeTrackRef.current, canvas.width, canvas.height);
+      }
     }
 
     frameCountRef.current += 1;
@@ -194,7 +272,12 @@ export default function PoseTrackerPage() {
     animationRef.current = requestAnimationFrame(renderLoop);
   }
 
-  function drawTrack(ctx: CanvasRenderingContext2D, track: NonNullable<typeof activeTrackRef.current>, width: number, height: number) {
+  function drawTrack(
+    ctx: CanvasRenderingContext2D,
+    track: NonNullable<typeof activeTrackRef.current>,
+    _width: number,
+    height: number
+  ) {
     ctx.save();
 
     if (showBox) {
@@ -243,24 +326,62 @@ export default function PoseTrackerPage() {
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         <h1 style={{ marginTop: 0, marginBottom: 8 }}>Overshoot V1: Standing Person Pose Tracker</h1>
         <p style={{ marginTop: 0, color: '#b6c2df' }}>
-          Detect one standing person, assign a stable ID, and render a stick figure that follows body movement in real time.
+          Detect one standing person, assign a stable ID, and render a stick figure that follows body
+          movement in real time.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignItems: 'start' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 320px',
+            gap: 20,
+            alignItems: 'start'
+          }}
+        >
           <section>
-            <div style={{ position: 'relative', background: '#050816', borderRadius: 16, overflow: 'hidden', border: '1px solid #1f2942' }}>
+            <div
+              style={{
+                position: 'relative',
+                background: '#050816',
+                borderRadius: 16,
+                overflow: 'hidden',
+                border: '1px solid #1f2942'
+              }}
+            >
               <video
                 ref={videoRef}
+                autoPlay
                 playsInline
                 muted
-                style={{ width: '100%', height: 'auto', display: 'block', transform: 'scaleX(-1)' }}
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  display: 'block',
+                  transform: 'scaleX(-1)'
+                }}
               />
               <canvas
                 ref={canvasRef}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', transform: 'scaleX(-1)' }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                  transform: 'scaleX(-1)'
+                }}
               />
               {!isRunning && (
-                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#94a3b8', background: 'rgba(2,6,23,.45)' }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: '#94a3b8',
+                    background: 'rgba(2,6,23,.45)'
+                  }}
+                >
                   Camera is off
                 </div>
               )}
@@ -285,13 +406,30 @@ export default function PoseTrackerPage() {
             </div>
 
             {error && (
-              <div style={{ marginTop: 14, background: '#3f1119', color: '#fecdd3', padding: 12, borderRadius: 12, border: '1px solid #7f1d1d' }}>
+              <div
+                style={{
+                  marginTop: 14,
+                  background: '#3f1119',
+                  color: '#fecdd3',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: '1px solid #7f1d1d',
+                  whiteSpace: 'pre-wrap'
+                }}
+              >
                 {error}
               </div>
             )}
           </section>
 
-          <aside style={{ background: '#121a31', border: '1px solid #1f2942', borderRadius: 16, padding: 18 }}>
+          <aside
+            style={{
+              background: '#121a31',
+              border: '1px solid #1f2942',
+              borderRadius: 16,
+              padding: 18
+            }}
+          >
             <h2 style={{ marginTop: 0, fontSize: 20 }}>Debug Panel</h2>
             <Metric label="Tracking State" value={debug.tracking} />
             <Metric label="Person Detected" value={debug.personDetected ? 'Yes' : 'No'} />
@@ -301,7 +439,8 @@ export default function PoseTrackerPage() {
             <Metric label="FPS" value={debug.fps} />
 
             <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
-              Best results come from a full standing body view, front lighting, and a clear background. For this V1, keep only one person in the frame.
+              Best results come from a full standing body view, front lighting, and a clear
+              background. For this V1, keep only one person in the frame.
             </div>
           </aside>
         </div>
@@ -312,7 +451,15 @@ export default function PoseTrackerPage() {
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #1f2942' }}>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '10px 0',
+        borderBottom: '1px solid #1f2942'
+      }}
+    >
       <span style={{ color: '#94a3b8' }}>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -326,6 +473,7 @@ function buttonStyle(bg: string): React.CSSProperties {
     border: 'none',
     borderRadius: 12,
     padding: '12px 16px',
-    fontWeight: 700
+    fontWeight: 700,
+    cursor: 'pointer'
   };
 }
