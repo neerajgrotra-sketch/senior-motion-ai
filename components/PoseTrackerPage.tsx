@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
-import * as tf from '@tensorflow/tfjs-core';
-import '@tensorflow/tfjs-converter';
-import '@tensorflow/tfjs-backend-webgl';
+import '@mediapipe/pose';
 import type { DebugState } from '@/lib/poseTypes';
 import {
   buildPoseTrack,
@@ -54,19 +52,12 @@ export default function PoseTrackerPage() {
 
   async function ensureDetector() {
     if (!detectorRef.current) {
-      await tf.ready();
-
-      const currentBackend = tf.getBackend();
-      if (currentBackend !== 'webgl') {
-        await tf.setBackend('webgl');
-        await tf.ready();
-      }
-
       detectorRef.current = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet,
+        poseDetection.SupportedModels.BlazePose,
         {
-          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          enableSmoothing: true
+          runtime: 'mediapipe',
+          modelType: 'full',
+          solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
         }
       );
     }
@@ -105,8 +96,7 @@ export default function PoseTrackerPage() {
 
     for (const constraints of attempts) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        return stream;
+        return await navigator.mediaDevices.getUserMedia(constraints);
       } catch (err) {
         lastError = err;
         console.error('Camera attempt failed:', constraints, err);
@@ -125,16 +115,15 @@ export default function PoseTrackerPage() {
         throw new Error('Video element not available.');
       }
 
-      await ensureDetector();
-
       const stream = await getCameraStream();
       streamRef.current = stream;
 
       video.srcObject = stream;
       video.muted = true;
       video.playsInline = true;
-
       await video.play();
+
+      await ensureDetector();
 
       setIsRunning(true);
       lastSeenRef.current = performance.now();
