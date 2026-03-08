@@ -1,5 +1,5 @@
-import PoseTrackerPage from '@/components/PoseTrackerPage';
+import PoseTrackerPage from '../components/PoseTrackerPage';
 
-export default function Page() {
+export default function Home() {
   return <PoseTrackerPage />;
 }
