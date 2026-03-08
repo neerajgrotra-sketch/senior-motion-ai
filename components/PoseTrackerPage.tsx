@@ -52,11 +52,17 @@ export default function PoseTrackerPage() {
     };
   }, []);
 
-  async function ensureDetector() {
+async function ensureDetector() {
   if (!detectorRef.current) {
-
     await tf.ready();
-    await tf.setBackend('webgl');
+
+    const backend = tf.getBackend();
+    if (backend !== 'webgl') {
+      await tf.setBackend('webgl');
+      await tf.ready();
+    }
+
+    console.log('TF backend:', tf.getBackend());
 
     detectorRef.current = await poseDetection.createDetector(
       poseDetection.SupportedModels.MoveNet,
@@ -104,14 +110,18 @@ export default function PoseTrackerPage() {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         return stream;
       } catch (err) {
-        lastError = err;
-        console.error('Camera attempt failed:', constraints, err);
-      }
-    }
+  console.error('Camera/model start failed:', err);
 
-    throw lastError instanceof Error ? lastError : new Error('Could not access camera.');
+  let message = 'Unknown error';
+
+  if (err instanceof Error) {
+    message = `${err.name}: ${err.message}`;
+  } else if (typeof err === 'string') {
+    message = err;
   }
 
+  setError(message);
+}
   async function startCamera() {
     try {
       setError('');
