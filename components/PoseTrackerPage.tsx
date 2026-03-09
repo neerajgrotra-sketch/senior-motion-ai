@@ -12,6 +12,7 @@ import {
   visibleKeypointCount
 } from '../lib/poseUtils';
 import { extractFeatures } from '../lib/features/extractFeatures';
+import { stabilizeFeatures } from '../lib/features/stabilizeFeatures';
 import {
   advanceRaiseRightHand,
   createRaiseRightHandMachine
