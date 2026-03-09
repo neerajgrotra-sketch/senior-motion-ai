@@ -34,8 +34,9 @@ export default function PoseTrackerPage() {
   const lastFpsTickRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
   const lastSeenRef = useRef<number>(0);
-  const activeTrackRef = useRef<ReturnType<typeof buildPoseTrack> | null>(null);
-  const machineRef = useRef<ExerciseMachine>(createRaiseRightHandMachine());
+const activeTrackRef = useRef<ReturnType<typeof buildPoseTrack> | null>(null);
+const machineRef = useRef<ExerciseMachine>(createRaiseRightHandMachine());
+const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeatures | null>(null);
 
   const [isRunning, setIsRunning] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(true);
@@ -137,6 +138,7 @@ export default function PoseTrackerPage() {
       await ensureDetector();
 
       machineRef.current = createRaiseRightHandMachine();
+      stableFeaturesRef.current = null;
 
       setDebug({
         fps: 0,
@@ -196,6 +198,7 @@ export default function PoseTrackerPage() {
 
     activeTrackRef.current = null;
     machineRef.current = createRaiseRightHandMachine();
+    stableFeaturesRef.current = null;
 
     setIsRunning(false);
     setDebug({
@@ -265,8 +268,11 @@ export default function PoseTrackerPage() {
 
           drawTrack(ctx, smoothed, canvas.height);
 
-          const features = extractFeatures(smoothed, ts);
-          machineRef.current = advanceRaiseRightHand(machineRef.current, features);
+          const rawFeatures = extractFeatures(smoothed, ts);
+const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
+stableFeaturesRef.current = stableFeatures;
+
+machineRef.current = advanceRaiseRightHand(machineRef.current, stableFeatures);
 
           setDebug((prev) => ({
             ...prev,
