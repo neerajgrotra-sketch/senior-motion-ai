@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import '@mediapipe/pose';
-import type { DebugState } from '../lib/poseTypes';
+import type { DebugState, ExerciseMachine } from '../lib/poseTypes';
 import {
   buildPoseTrack,
   keypointsToMap,
@@ -11,6 +11,11 @@ import {
   smoothPose,
   visibleKeypointCount
 } from '../lib/poseUtils';
+import { extractFeatures } from '../lib/features/extractFeatures';
+import {
+  advanceRaiseRightHand,
+  createRaiseRightHandMachine
+} from '../lib/exercises/raiseRightHand';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
@@ -29,19 +34,24 @@ export default function PoseTrackerPage() {
   const frameCountRef = useRef<number>(0);
   const lastSeenRef = useRef<number>(0);
   const activeTrackRef = useRef<ReturnType<typeof buildPoseTrack> | null>(null);
+  const machineRef = useRef<ExerciseMachine>(createRaiseRightHandMachine());
 
   const [isRunning, setIsRunning] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(true);
   const [showBox, setShowBox] = useState(true);
   const [showDots, setShowDots] = useState(true);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState('');
   const [debug, setDebug] = useState<DebugState>({
     fps: 0,
     tracking: 'idle',
     personDetected: false,
     trackId: null,
     confidence: 0,
-    visibleKeypoints: 0
+    visibleKeypoints: 0,
+    exercisePhase: 'idle',
+    repCount: 0,
+    holdMs: 0,
+    statusText: 'Get ready'
   });
 
   useEffect(() => {
@@ -125,6 +135,21 @@ export default function PoseTrackerPage() {
 
       await ensureDetector();
 
+      machineRef.current = createRaiseRightHandMachine();
+
+      setDebug({
+        fps: 0,
+        tracking: 'idle',
+        personDetected: false,
+        trackId: null,
+        confidence: 0,
+        visibleKeypoints: 0,
+        exercisePhase: 'idle',
+        repCount: 0,
+        holdMs: 0,
+        statusText: 'Get ready'
+      });
+
       setIsRunning(true);
       lastSeenRef.current = performance.now();
       lastRunRef.current = 0;
@@ -169,6 +194,8 @@ export default function PoseTrackerPage() {
     }
 
     activeTrackRef.current = null;
+    machineRef.current = createRaiseRightHandMachine();
+
     setIsRunning(false);
     setDebug({
       fps: 0,
@@ -176,7 +203,11 @@ export default function PoseTrackerPage() {
       personDetected: false,
       trackId: null,
       confidence: 0,
-      visibleKeypoints: 0
+      visibleKeypoints: 0,
+      exercisePhase: 'idle',
+      repCount: 0,
+      holdMs: 0,
+      statusText: 'Get ready'
     });
 
     clearCanvas();
@@ -219,11 +250,11 @@ export default function PoseTrackerPage() {
       lastRunRef.current = ts;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const poses = await detector.estimatePoses(video, { flipHorizontal: true });
+      const poses = await detector.estimatePoses(video, { flipHorizontal: false });
       const pose = poses[0];
 
       if (pose?.keypoints?.length) {
-        const pointMap = keypointsToMap(pose.keypoints);
+        const pointMap = keypointsToMap(pose.keypoints as any[]);
         const built = buildPoseTrack(PERSON_ID, pointMap);
 
         if (built) {
@@ -233,25 +264,37 @@ export default function PoseTrackerPage() {
 
           drawTrack(ctx, smoothed, canvas.height);
 
+          const features = extractFeatures(smoothed, ts);
+          machineRef.current = advanceRaiseRightHand(machineRef.current, features);
+
           setDebug((prev) => ({
             ...prev,
             tracking: 'active',
             personDetected: true,
             trackId: smoothed.id,
             confidence: smoothed.confidence,
-            visibleKeypoints: visibleKeypointCount(smoothed.keypoints)
+            visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
+            exercisePhase: machineRef.current.phase,
+            repCount: machineRef.current.repCount,
+            holdMs: machineRef.current.holdMs,
+            statusText: machineRef.current.statusText
           }));
         }
       } else {
         if (ts - lastSeenRef.current > LOST_AFTER_MS) {
           activeTrackRef.current = null;
+          machineRef.current = createRaiseRightHandMachine();
+
           setDebug((prev) => ({
             ...prev,
             tracking: 'lost',
             personDetected: false,
             trackId: null,
             confidence: 0,
-            visibleKeypoints: 0
+            visibleKeypoints: 0,
+            exercisePhase: 'lost',
+            holdMs: 0,
+            statusText: 'Person lost - step back into frame'
           }));
         } else if (activeTrackRef.current) {
           drawTrack(ctx, activeTrackRef.current, canvas.height);
@@ -330,17 +373,22 @@ export default function PoseTrackerPage() {
     <main style={{ minHeight: '100vh', padding: 24 }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         <h1 style={{ marginTop: 0, marginBottom: 8 }}>
-          Overshoot V1: Standing Person Pose Tracker
+          Overshoot V1.5: Right-Hand Exercise Validator
         </h1>
         <p style={{ marginTop: 0, color: '#b6c2df' }}>
-          Detect one standing person, assign a stable ID, and render a stick figure that follows
-          body movement in real time.
+          Pose tracking + movement state engine. Current exercise: raise your right hand.
         </p>
+
+        <div style={{ marginBottom: 18, ...cardStyle }}>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Prompt</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
+          <div style={{ marginTop: 8, color: '#cbd5e1' }}>{debug.statusText}</div>
+        </div>
 
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 320px',
+            gridTemplateColumns: '1fr 340px',
             gap: 20,
             alignItems: 'start'
           }}
@@ -363,8 +411,7 @@ export default function PoseTrackerPage() {
                 style={{
                   width: '100%',
                   height: 'auto',
-                  display: 'block',
-                  transform: 'scaleX(-1)'
+                  display: 'block'
                 }}
               />
               <canvas
@@ -374,8 +421,7 @@ export default function PoseTrackerPage() {
                   inset: 0,
                   width: '100%',
                   height: '100%',
-                  pointerEvents: 'none',
-                  transform: 'scaleX(-1)'
+                  pointerEvents: 'none'
                 }}
               />
 
@@ -430,14 +476,7 @@ export default function PoseTrackerPage() {
             )}
           </section>
 
-          <aside
-            style={{
-              background: '#121a31',
-              border: '1px solid #1f2942',
-              borderRadius: 16,
-              padding: 18
-            }}
-          >
+          <aside style={{ ...cardStyle, padding: 18 }}>
             <h2 style={{ marginTop: 0, fontSize: 20 }}>Debug Panel</h2>
             <Metric label="Tracking State" value={debug.tracking} />
             <Metric label="Person Detected" value={debug.personDetected ? 'Yes' : 'No'} />
@@ -445,10 +484,13 @@ export default function PoseTrackerPage() {
             <Metric label="Visible Keypoints" value={debug.visibleKeypoints} />
             <Metric label="Confidence" value={`${(debug.confidence * 100).toFixed(0)}%`} />
             <Metric label="FPS" value={debug.fps} />
+            <Metric label="Exercise Phase" value={debug.exercisePhase} />
+            <Metric label="Rep Count" value={debug.repCount} />
+            <Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
 
             <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
-              Best results come from a full standing body view, front lighting, and a clear
-              background. For this V1, keep only one person in the frame.
+              Start position: keep your right hand down. Then lift above your shoulder, hold briefly,
+              and lower back down.
             </div>
           </aside>
         </div>
@@ -474,7 +516,7 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function buttonStyle(bg: string): React.CSSProperties {
+function buttonStyle(bg: string): CSSProperties {
   return {
     background: bg,
     color: 'white',
@@ -485,3 +527,10 @@ function buttonStyle(bg: string): React.CSSProperties {
     cursor: 'pointer'
   };
 }
+
+const cardStyle: CSSProperties = {
+  background: '#121a31',
+  border: '1px solid #1f2942',
+  borderRadius: 16,
+  padding: 16
+};
