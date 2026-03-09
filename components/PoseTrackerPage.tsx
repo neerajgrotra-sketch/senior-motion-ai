@@ -43,18 +43,22 @@ const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeature
   const [showBox, setShowBox] = useState(true);
   const [showDots, setShowDots] = useState(true);
   const [error, setError] = useState('');
-  const [debug, setDebug] = useState<DebugState>({
-    fps: 0,
-    tracking: 'idle',
-    personDetected: false,
-    trackId: null,
-    confidence: 0,
-    visibleKeypoints: 0,
-    exercisePhase: 'idle',
-    repCount: 0,
-    holdMs: 0,
-    statusText: 'Get ready'
-  });
+ const [debug, setDebug] = useState<DebugState>({
+  fps: 0,
+  tracking: 'idle',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+});
 
   useEffect(() => {
     return () => {
@@ -141,17 +145,21 @@ const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeature
       stableFeaturesRef.current = null;
 
       setDebug({
-        fps: 0,
-        tracking: 'idle',
-        personDetected: false,
-        trackId: null,
-        confidence: 0,
-        visibleKeypoints: 0,
-        exercisePhase: 'idle',
-        repCount: 0,
-        holdMs: 0,
-        statusText: 'Get ready'
-      });
+  fps: 0,
+  tracking: 'idle',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+});
 
       setIsRunning(true);
       lastSeenRef.current = performance.now();
@@ -202,17 +210,21 @@ const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeature
 
     setIsRunning(false);
     setDebug({
-      fps: 0,
-      tracking: 'idle',
-      personDetected: false,
-      trackId: null,
-      confidence: 0,
-      visibleKeypoints: 0,
-      exercisePhase: 'idle',
-      repCount: 0,
-      holdMs: 0,
-      statusText: 'Get ready'
-    });
+  fps: 0,
+  tracking: 'idle',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+});
 
     clearCanvas();
   }
@@ -274,35 +286,41 @@ stableFeaturesRef.current = stableFeatures;
 
 machineRef.current = advanceRaiseRightHand(machineRef.current, stableFeatures);
 
-          setDebug((prev) => ({
-            ...prev,
-            tracking: 'active',
-            personDetected: true,
-            trackId: smoothed.id,
-            confidence: smoothed.confidence,
-            visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
-            exercisePhase: machineRef.current.phase,
-            repCount: machineRef.current.repCount,
-            holdMs: machineRef.current.holdMs,
-            statusText: machineRef.current.statusText
-          }));
+       setDebug((prev) => ({
+  ...prev,
+  tracking: 'active',
+  personDetected: true,
+  trackId: smoothed.id,
+  confidence: smoothed.confidence,
+  visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
+  exercisePhase: machineRef.current.phase,
+  repCount: machineRef.current.repCount,
+  holdMs: machineRef.current.holdMs,
+  statusText: machineRef.current.statusText,
+  currentLiftNorm: stableFeatures.rightHandLiftNorm,
+  currentRepPeakLift: machineRef.current.currentRepPeakLift,
+  lastRepPeakLift: machineRef.current.lastRepPeakLift,
+  sessionPeakLift: machineRef.current.sessionPeakLift
+}));
         }
       } else {
         if (ts - lastSeenRef.current > LOST_AFTER_MS) {
           activeTrackRef.current = null;
           machineRef.current = createRaiseRightHandMachine();
 
-          setDebug((prev) => ({
-            ...prev,
-            tracking: 'lost',
-            personDetected: false,
-            trackId: null,
-            confidence: 0,
-            visibleKeypoints: 0,
-            exercisePhase: 'lost',
-            holdMs: 0,
-            statusText: 'Person lost - step back into frame'
-          }));
+        setDebug((prev) => ({
+  ...prev,
+  tracking: 'lost',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  exercisePhase: 'lost',
+  holdMs: 0,
+  statusText: 'Person lost - step back into frame',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0
+}));
         } else if (activeTrackRef.current) {
           drawTrack(ctx, activeTrackRef.current, canvas.height);
         }
@@ -491,9 +509,16 @@ machineRef.current = advanceRaiseRightHand(machineRef.current, stableFeatures);
             <Metric label="Visible Keypoints" value={debug.visibleKeypoints} />
             <Metric label="Confidence" value={`${(debug.confidence * 100).toFixed(0)}%`} />
             <Metric label="FPS" value={debug.fps} />
-            <Metric label="Exercise Phase" value={debug.exercisePhase} />
-            <Metric label="Rep Count" value={debug.repCount} />
-            <Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
+          <Metric label="Exercise Phase" value={debug.exercisePhase} />
+<Metric label="Rep Count" value={debug.repCount} />
+<Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
+<Metric label="Current Lift" value={debug.currentLiftNorm.toFixed(3)} />
+<Metric label="Rep Peak Lift" value={debug.currentRepPeakLift.toFixed(3)} />
+<Metric
+  label="Last Rep Peak"
+  value={debug.lastRepPeakLift !== null ? debug.lastRepPeakLift.toFixed(3) : '—'}
+/>
+<Metric label="Session Best Lift" value={debug.sessionPeakLift.toFixed(3)} />
 
             <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
               Start position: keep your right hand down. Then lift above your shoulder, hold briefly,
