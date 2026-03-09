@@ -1,11 +1,17 @@
 import type { ExerciseFrameFeatures, PoseTrack } from '../poseTypes';
 import { angleDeg, distance, getPoint, midpoint } from '../poseUtils';
+import { classifyPosture } from './classifyPosture';
 
 export function extractFeatures(track: PoseTrack, timestamp: number): ExerciseFrameFeatures {
   const leftShoulder = getPoint(track.keypoints, 'left_shoulder');
   const rightShoulder = getPoint(track.keypoints, 'right_shoulder');
   const leftHip = getPoint(track.keypoints, 'left_hip');
   const rightHip = getPoint(track.keypoints, 'right_hip');
+
+  const leftKnee = getPoint(track.keypoints, 'left_knee');
+  const rightKnee = getPoint(track.keypoints, 'right_knee');
+  const leftAnkle = getPoint(track.keypoints, 'left_ankle');
+  const rightAnkle = getPoint(track.keypoints, 'right_ankle');
 
   const leftWrist = getPoint(track.keypoints, 'left_wrist');
   const leftElbow = getPoint(track.keypoints, 'left_elbow');
@@ -18,6 +24,17 @@ export function extractFeatures(track: PoseTrack, timestamp: number): ExerciseFr
 
   const torsoLength = Math.max(1, distance(shoulderCenter, hipCenter));
   const torsoLeanDeg = angleDeg(hipCenter, shoulderCenter) - 90;
+
+  const postureInfo = classifyPosture({
+    leftShoulder,
+    rightShoulder,
+    leftHip,
+    rightHip,
+    leftKnee,
+    rightKnee,
+    leftAnkle,
+    rightAnkle
+  });
 
   const rightHandLiftNorm = (rightShoulder.y - rightWrist.y) / torsoLength;
   const rightHandAboveShoulder = rightWrist.y < rightShoulder.y - torsoLength * 0.03;
@@ -38,6 +55,14 @@ export function extractFeatures(track: PoseTrack, timestamp: number): ExerciseFr
     confidence: track.confidence,
     torsoLength,
     torsoLeanDeg,
+
+    posture: postureInfo.posture,
+    leftKneeAngle: postureInfo.leftKneeAngle,
+    rightKneeAngle: postureInfo.rightKneeAngle,
+    avgKneeAngle: postureInfo.avgKneeAngle,
+    hipToKneeNorm: postureInfo.hipToKneeNorm,
+    kneeToAnkleNorm: postureInfo.kneeToAnkleNorm,
+    bodySpanNorm: postureInfo.bodySpanNorm,
 
     rightWristY: rightWrist.y,
     rightShoulderY: rightShoulder.y,
