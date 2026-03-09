@@ -9,6 +9,10 @@ export type DebugState = {
   repCount: number;
   holdMs: number;
   statusText: string;
+  currentLiftNorm: number;
+  currentRepPeakLift: number;
+  lastRepPeakLift: number | null;
+  sessionPeakLift: number;
 };
 
 export type PosePoint = {
@@ -68,4 +72,7 @@ export type ExerciseMachine = {
   lastTransitionAt: number | null;
   lastCompletedAt: number | null;
   lastFeatures: ExerciseFrameFeatures | null;
+  currentRepPeakLift: number;
+  lastRepPeakLift: number | null;
+  sessionPeakLift: number;
 };
