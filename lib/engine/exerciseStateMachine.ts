@@ -10,7 +10,10 @@ export function createExerciseMachine(prompt: string): ExerciseMachine {
     lastTimestamp: null,
     lastTransitionAt: null,
     lastCompletedAt: null,
-    lastFeatures: null
+    lastFeatures: null,
+    currentRepPeakLift: 0,
+    lastRepPeakLift: null,
+    sessionPeakLift: 0
   };
 }
 
