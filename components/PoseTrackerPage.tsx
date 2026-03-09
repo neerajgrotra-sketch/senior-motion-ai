@@ -1,9 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import '@mediapipe/pose';
-import type { DebugState, ExerciseMachine } from '../lib/poseTypes';
+
+import type {
+  DebugState,
+  ExerciseFrameFeatures,
+  ExerciseMachine
+} from '../lib/poseTypes';
+
 import {
   buildPoseTrack,
   keypointsToMap,
@@ -11,18 +17,18 @@ import {
   smoothPose,
   visibleKeypointCount
 } from '../lib/poseUtils';
+
 import { extractFeatures } from '../lib/features/extractFeatures';
 import { stabilizeFeatures } from '../lib/features/stabilizeFeatures';
-import {
-  advanceRaiseRightHand,
-  createRaiseRightHandMachine
-} from '../lib/exercises/raiseRightHand';
+import { EXERCISE_OPTIONS, EXERCISE_REGISTRY } from '../lib/exercises/exerciseRegistry';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
 const DETECTION_INTERVAL_MS = 50;
 const PERSON_ID = 1;
 const LOST_AFTER_MS = 2000;
+
+const DEFAULT_EXERCISE_ID = 'raise_right_hand';
 
 export default function PoseTrackerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -34,37 +40,63 @@ export default function PoseTrackerPage() {
   const lastFpsTickRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
   const lastSeenRef = useRef<number>(0);
-const activeTrackRef = useRef<ReturnType<typeof buildPoseTrack> | null>(null);
-const machineRef = useRef<ExerciseMachine>(createRaiseRightHandMachine());
-const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeatures | null>(null);
+  const activeTrackRef = useRef<ReturnType<typeof buildPoseTrack> | null>(null);
+  const stableFeaturesRef = useRef<ExerciseFrameFeatures | null>(null);
+
+  const [selectedExerciseId, setSelectedExerciseId] = useState(DEFAULT_EXERCISE_ID);
+
+  const selectedExercise = useMemo(() => {
+    return EXERCISE_REGISTRY[selectedExerciseId] ?? EXERCISE_REGISTRY[DEFAULT_EXERCISE_ID];
+  }, [selectedExerciseId]);
+
+  const machineRef = useRef<ExerciseMachine>(selectedExercise.createMachine());
 
   const [isRunning, setIsRunning] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(true);
   const [showBox, setShowBox] = useState(true);
   const [showDots, setShowDots] = useState(true);
   const [error, setError] = useState('');
- const [debug, setDebug] = useState<DebugState>({
-  fps: 0,
-  tracking: 'idle',
-  personDetected: false,
-  trackId: null,
-  confidence: 0,
-  visibleKeypoints: 0,
-  exercisePhase: 'idle',
-  repCount: 0,
-  holdMs: 0,
-  statusText: 'Get ready',
-  currentLiftNorm: 0,
-  currentRepPeakLift: 0,
-  lastRepPeakLift: null,
-  sessionPeakLift: 0
-});
+  const [debug, setDebug] = useState<DebugState>({
+    fps: 0,
+    tracking: 'idle',
+    personDetected: false,
+    trackId: null,
+    confidence: 0,
+    visibleKeypoints: 0,
+    exerciseId: DEFAULT_EXERCISE_ID,
+    exercisePhase: 'idle',
+    repCount: 0,
+    holdMs: 0,
+    statusText: 'Get ready',
+    currentLiftNorm: 0,
+    currentRepPeakLift: 0,
+    lastRepPeakLift: null,
+    sessionPeakLift: 0
+  });
 
   useEffect(() => {
     return () => {
       stopCamera();
     };
   }, []);
+
+  useEffect(() => {
+    machineRef.current = selectedExercise.createMachine();
+    stableFeaturesRef.current = null;
+
+    setDebug((prev) => ({
+      ...prev,
+      exerciseId: selectedExercise.id,
+      exercisePhase: 'idle',
+      repCount: 0,
+      holdMs: 0,
+      statusText: 'Get ready',
+      currentLiftNorm: 0,
+      currentRepPeakLift: 0,
+      lastRepPeakLift: null,
+      sessionPeakLift: 0
+    }));
+  }, [selectedExercise]);
 
   async function ensureDetector() {
     if (!detectorRef.current) {
@@ -141,25 +173,26 @@ const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeature
 
       await ensureDetector();
 
-      machineRef.current = createRaiseRightHandMachine();
+      machineRef.current = selectedExercise.createMachine();
       stableFeaturesRef.current = null;
 
       setDebug({
-  fps: 0,
-  tracking: 'idle',
-  personDetected: false,
-  trackId: null,
-  confidence: 0,
-  visibleKeypoints: 0,
-  exercisePhase: 'idle',
-  repCount: 0,
-  holdMs: 0,
-  statusText: 'Get ready',
-  currentLiftNorm: 0,
-  currentRepPeakLift: 0,
-  lastRepPeakLift: null,
-  sessionPeakLift: 0
-});
+        fps: 0,
+        tracking: 'idle',
+        personDetected: false,
+        trackId: null,
+        confidence: 0,
+        visibleKeypoints: 0,
+        exerciseId: selectedExercise.id,
+        exercisePhase: 'idle',
+        repCount: 0,
+        holdMs: 0,
+        statusText: 'Get ready',
+        currentLiftNorm: 0,
+        currentRepPeakLift: 0,
+        lastRepPeakLift: null,
+        sessionPeakLift: 0
+      });
 
       setIsRunning(true);
       lastSeenRef.current = performance.now();
@@ -205,26 +238,27 @@ const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeature
     }
 
     activeTrackRef.current = null;
-    machineRef.current = createRaiseRightHandMachine();
     stableFeaturesRef.current = null;
+    machineRef.current = selectedExercise.createMachine();
 
     setIsRunning(false);
     setDebug({
-  fps: 0,
-  tracking: 'idle',
-  personDetected: false,
-  trackId: null,
-  confidence: 0,
-  visibleKeypoints: 0,
-  exercisePhase: 'idle',
-  repCount: 0,
-  holdMs: 0,
-  statusText: 'Get ready',
-  currentLiftNorm: 0,
-  currentRepPeakLift: 0,
-  lastRepPeakLift: null,
-  sessionPeakLift: 0
-});
+      fps: 0,
+      tracking: 'idle',
+      personDetected: false,
+      trackId: null,
+      confidence: 0,
+      visibleKeypoints: 0,
+      exerciseId: selectedExercise.id,
+      exercisePhase: 'idle',
+      repCount: 0,
+      holdMs: 0,
+      statusText: 'Get ready',
+      currentLiftNorm: 0,
+      currentRepPeakLift: 0,
+      lastRepPeakLift: null,
+      sessionPeakLift: 0
+    });
 
     clearCanvas();
   }
@@ -281,46 +315,49 @@ const stableFeaturesRef = useRef<import('../lib/poseTypes').ExerciseFrameFeature
           drawTrack(ctx, smoothed, canvas.height);
 
           const rawFeatures = extractFeatures(smoothed, ts);
-const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
-stableFeaturesRef.current = stableFeatures;
+          const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
+          stableFeaturesRef.current = stableFeatures;
 
-machineRef.current = advanceRaiseRightHand(machineRef.current, stableFeatures);
+          machineRef.current = selectedExercise.advance(machineRef.current, stableFeatures);
 
-       setDebug((prev) => ({
-  ...prev,
-  tracking: 'active',
-  personDetected: true,
-  trackId: smoothed.id,
-  confidence: smoothed.confidence,
-  visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
-  exercisePhase: machineRef.current.phase,
-  repCount: machineRef.current.repCount,
-  holdMs: machineRef.current.holdMs,
-  statusText: machineRef.current.statusText,
-  currentLiftNorm: stableFeatures.rightHandLiftNorm,
-  currentRepPeakLift: machineRef.current.currentRepPeakLift,
-  lastRepPeakLift: machineRef.current.lastRepPeakLift,
-  sessionPeakLift: machineRef.current.sessionPeakLift
-}));
+          setDebug((prev) => ({
+            ...prev,
+            tracking: 'active',
+            personDetected: true,
+            trackId: smoothed.id,
+            confidence: smoothed.confidence,
+            visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
+            exerciseId: selectedExercise.id,
+            exercisePhase: machineRef.current.phase,
+            repCount: machineRef.current.repCount,
+            holdMs: machineRef.current.holdMs,
+            statusText: machineRef.current.statusText,
+            currentLiftNorm: selectedExercise.getCurrentLift(stableFeatures),
+            currentRepPeakLift: machineRef.current.currentRepPeakLift,
+            lastRepPeakLift: machineRef.current.lastRepPeakLift,
+            sessionPeakLift: machineRef.current.sessionPeakLift
+          }));
         }
       } else {
         if (ts - lastSeenRef.current > LOST_AFTER_MS) {
           activeTrackRef.current = null;
-          machineRef.current = createRaiseRightHandMachine();
+          stableFeaturesRef.current = null;
+          machineRef.current = selectedExercise.createMachine();
 
-        setDebug((prev) => ({
-  ...prev,
-  tracking: 'lost',
-  personDetected: false,
-  trackId: null,
-  confidence: 0,
-  visibleKeypoints: 0,
-  exercisePhase: 'lost',
-  holdMs: 0,
-  statusText: 'Person lost - step back into frame',
-  currentLiftNorm: 0,
-  currentRepPeakLift: 0
-}));
+          setDebug((prev) => ({
+            ...prev,
+            tracking: 'lost',
+            personDetected: false,
+            trackId: null,
+            confidence: 0,
+            visibleKeypoints: 0,
+            exerciseId: selectedExercise.id,
+            exercisePhase: 'lost',
+            holdMs: 0,
+            statusText: 'Person lost - step back into frame',
+            currentLiftNorm: 0,
+            currentRepPeakLift: 0
+          }));
         } else if (activeTrackRef.current) {
           drawTrack(ctx, activeTrackRef.current, canvas.height);
         }
@@ -398,15 +435,35 @@ machineRef.current = advanceRaiseRightHand(machineRef.current, stableFeatures);
     <main style={{ minHeight: '100vh', padding: 24 }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         <h1 style={{ marginTop: 0, marginBottom: 8 }}>
-          Overshoot V1.5: Right-Hand Exercise Validator
+          Overshoot V1.6: Reusable Exercise Engine
         </h1>
         <p style={{ marginTop: 0, color: '#b6c2df' }}>
-          Pose tracking + movement state engine. Current exercise: raise your right hand.
+          Pose tracking + reusable movement validation engine for multiple arm exercises.
         </p>
 
-        <div style={{ marginBottom: 18, ...cardStyle }}>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Prompt</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
+        <div style={{ ...cardStyle, marginBottom: 18 }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Exercise</div>
+              <select
+                value={selectedExerciseId}
+                onChange={(e) => setSelectedExerciseId(e.target.value)}
+                style={selectStyle}
+              >
+                {EXERCISE_OPTIONS.map((exercise) => (
+                  <option key={exercise.id} value={exercise.id}>
+                    {exercise.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Prompt</div>
+              <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
+            </div>
+          </div>
+
           <div style={{ marginTop: 8, color: '#cbd5e1' }}>{debug.statusText}</div>
         </div>
 
@@ -509,20 +566,20 @@ machineRef.current = advanceRaiseRightHand(machineRef.current, stableFeatures);
             <Metric label="Visible Keypoints" value={debug.visibleKeypoints} />
             <Metric label="Confidence" value={`${(debug.confidence * 100).toFixed(0)}%`} />
             <Metric label="FPS" value={debug.fps} />
-          <Metric label="Exercise Phase" value={debug.exercisePhase} />
-<Metric label="Rep Count" value={debug.repCount} />
-<Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
-<Metric label="Current Lift" value={debug.currentLiftNorm.toFixed(3)} />
-<Metric label="Rep Peak Lift" value={debug.currentRepPeakLift.toFixed(3)} />
-<Metric
-  label="Last Rep Peak"
-  value={debug.lastRepPeakLift !== null ? debug.lastRepPeakLift.toFixed(3) : '—'}
-/>
-<Metric label="Session Best Lift" value={debug.sessionPeakLift.toFixed(3)} />
+            <Metric label="Exercise" value={selectedExercise.label} />
+            <Metric label="Exercise Phase" value={debug.exercisePhase} />
+            <Metric label="Rep Count" value={debug.repCount} />
+            <Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
+            <Metric label="Current Lift" value={debug.currentLiftNorm.toFixed(3)} />
+            <Metric label="Rep Peak Lift" value={debug.currentRepPeakLift.toFixed(3)} />
+            <Metric
+              label="Last Rep Peak"
+              value={debug.lastRepPeakLift !== null ? debug.lastRepPeakLift.toFixed(3) : '—'}
+            />
+            <Metric label="Session Best Lift" value={debug.sessionPeakLift.toFixed(3)} />
 
             <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
-              Start position: keep your right hand down. Then lift above your shoulder, hold briefly,
-              and lower back down.
+              Try the selected exercise and watch the state machine, rep counter, and lift metrics.
             </div>
           </aside>
         </div>
@@ -565,4 +622,13 @@ const cardStyle: CSSProperties = {
   border: '1px solid #1f2942',
   borderRadius: 16,
   padding: 16
+};
+
+const selectStyle: CSSProperties = {
+  background: '#0f172a',
+  color: 'white',
+  border: '1px solid #334155',
+  borderRadius: 10,
+  padding: '10px 12px',
+  fontWeight: 600
 };
