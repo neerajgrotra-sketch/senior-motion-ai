@@ -5,6 +5,8 @@ export type DebugState = {
   trackId: number | null;
   confidence: number;
   visibleKeypoints: number;
+  posture: 'standing' | 'sitting' | 'unknown';
+  avgKneeAngle: number;
   exerciseId: string;
   exercisePhase: string;
   repCount: number;
@@ -41,6 +43,14 @@ export type ExerciseFrameFeatures = {
   confidence: number;
   torsoLength: number;
   torsoLeanDeg: number;
+
+  posture: 'standing' | 'sitting' | 'unknown';
+  leftKneeAngle: number;
+  rightKneeAngle: number;
+  avgKneeAngle: number;
+  hipToKneeNorm: number;
+  kneeToAnkleNorm: number;
+  bodySpanNorm: number;
 
   rightWristY: number;
   rightShoulderY: number;
