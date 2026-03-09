@@ -7,7 +7,12 @@ const UPWARD_VELOCITY_THRESHOLD = 0.008;
 const DOWNWARD_VELOCITY_THRESHOLD = 0.008;
 
 export function createRaiseRightHandMachine(): ExerciseMachine {
-  return createExerciseMachine('Raise your right hand');
+  return {
+    ...createExerciseMachine('Raise your right hand'),
+    currentRepPeakLift: 0,
+    lastRepPeakLift: null,
+    sessionPeakLift: 0
+  };
 }
 
 export function advanceRaiseRightHand(
@@ -21,14 +26,21 @@ export function advanceRaiseRightHand(
     features.rightShoulderScore < MIN_KEYPOINT_SCORE ||
     features.rightElbowScore < MIN_KEYPOINT_SCORE;
 
+  const peakLift = Math.max(machine.currentRepPeakLift, features.rightHandLiftNorm);
+  let next: ExerciseMachine = {
+    ...machine,
+    lastFeatures: features,
+    lastTimestamp: features.timestamp,
+    currentRepPeakLift: peakLift,
+    sessionPeakLift: Math.max(machine.sessionPeakLift, peakLift)
+  };
+
   if (lowConfidence) {
     return {
-      ...machine,
+      ...next,
       phase: 'lost',
       holdMs: 0,
-      statusText: 'Low confidence - keep your full body visible',
-      lastFeatures: features,
-      lastTimestamp: features.timestamp
+      statusText: 'Low confidence - keep your full body visible'
     };
   }
 
@@ -38,12 +50,11 @@ export function advanceRaiseRightHand(
   const downwardVelocityNorm =
     prev ? (features.rightWristY - prev.rightWristY) / Math.max(1, features.torsoLength) : 0;
 
-  let next = { ...machine, lastFeatures: features, lastTimestamp: features.timestamp };
-
   if (next.phase === 'lost' || next.phase === 'idle') {
     if (features.rightHandClearlyDown) {
       return transitionMachine(next, 'ready', features.timestamp, 'Start with your right hand down', {
-        holdMs: 0
+        holdMs: 0,
+        currentRepPeakLift: Math.max(0, features.rightHandLiftNorm)
       });
     }
 
@@ -60,7 +71,9 @@ export function advanceRaiseRightHand(
     }
 
     if (upwardVelocityNorm > UPWARD_VELOCITY_THRESHOLD) {
-      return transitionMachine(next, 'moving_up', features.timestamp, 'Good - lift your right hand');
+      return transitionMachine(next, 'moving_up', features.timestamp, 'Good - lift your right hand', {
+        currentRepPeakLift: Math.max(0, features.rightHandLiftNorm)
+      });
     }
 
     return {
@@ -96,9 +109,7 @@ export function advanceRaiseRightHand(
   }
 
   if (next.phase === 'holding') {
-    const holdMs = next.lastTransitionAt
-      ? features.timestamp - next.lastTransitionAt
-      : 0;
+    const holdMs = next.lastTransitionAt ? features.timestamp - next.lastTransitionAt : 0;
 
     if (!features.rightHandAboveShoulder) {
       if (holdMs >= MIN_HOLD_MS) {
@@ -122,9 +133,14 @@ export function advanceRaiseRightHand(
   if (next.phase === 'moving_down') {
     if (features.rightHandClearlyDown || downwardVelocityNorm > DOWNWARD_VELOCITY_THRESHOLD) {
       if (features.rightHandClearlyDown) {
+        const completedPeak = next.currentRepPeakLift;
+
         return transitionMachine(next, 'rep_complete', features.timestamp, 'Rep complete', {
           repCount: next.repCount + 1,
-          lastCompletedAt: features.timestamp
+          lastCompletedAt: features.timestamp,
+          lastRepPeakLift: completedPeak,
+          sessionPeakLift: Math.max(next.sessionPeakLift, completedPeak),
+          currentRepPeakLift: 0
         });
       }
 
@@ -143,7 +159,8 @@ export function advanceRaiseRightHand(
   if (next.phase === 'rep_complete') {
     if (features.rightHandClearlyDown) {
       return transitionMachine(next, 'ready', features.timestamp, 'Ready for the next rep', {
-        holdMs: 0
+        holdMs: 0,
+        currentRepPeakLift: Math.max(0, features.rightHandLiftNorm)
       });
     }
 
