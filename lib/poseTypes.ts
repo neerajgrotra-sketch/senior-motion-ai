@@ -5,6 +5,7 @@ export type DebugState = {
   trackId: number | null;
   confidence: number;
   visibleKeypoints: number;
+  exerciseId: string;
   exercisePhase: string;
   repCount: number;
   holdMs: number;
@@ -40,6 +41,7 @@ export type ExerciseFrameFeatures = {
   confidence: number;
   torsoLength: number;
   torsoLeanDeg: number;
+
   rightWristY: number;
   rightShoulderY: number;
   rightElbowY: number;
@@ -49,6 +51,21 @@ export type ExerciseFrameFeatures = {
   rightHandAboveShoulder: boolean;
   rightHandClearlyDown: boolean;
   rightHandLiftNorm: number;
+
+  leftWristY: number;
+  leftShoulderY: number;
+  leftElbowY: number;
+  leftWristScore: number;
+  leftShoulderScore: number;
+  leftElbowScore: number;
+  leftHandAboveShoulder: boolean;
+  leftHandClearlyDown: boolean;
+  leftHandLiftNorm: number;
+
+  bothHandsAboveShoulder: boolean;
+  bothHandsClearlyDown: boolean;
+  bothHandsLiftNorm: number;
+
   postureStable: boolean;
 };
 
@@ -75,4 +92,12 @@ export type ExerciseMachine = {
   currentRepPeakLift: number;
   lastRepPeakLift: number | null;
   sessionPeakLift: number;
+};
+
+export type ExerciseController = {
+  id: string;
+  label: string;
+  createMachine: () => ExerciseMachine;
+  advance: (machine: ExerciseMachine, features: ExerciseFrameFeatures) => ExerciseMachine;
+  getCurrentLift: (features: ExerciseFrameFeatures) => number;
 };
