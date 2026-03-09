@@ -57,23 +57,24 @@ export default function PoseTrackerPage() {
   const [showDots, setShowDots] = useState(true);
   const [error, setError] = useState('');
   const [debug, setDebug] = useState<DebugState>({
-    fps: 0,
-    tracking: 'idle',
-    personDetected: false,
-    trackId: null,
-    confidence: 0,
-    visibleKeypoints: 0,
-    exerciseId: DEFAULT_EXERCISE_ID,
-    exercisePhase: 'idle',
-    repCount: 0,
-    holdMs: 0,
-    statusText: 'Get ready',
-    currentLiftNorm: 0,
-    currentRepPeakLift: 0,
-    lastRepPeakLift: null,
-    sessionPeakLift: 0
-  });
-
+  fps: 0,
+  tracking: 'idle',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  posture: 'unknown',
+  avgKneeAngle: 0,
+  exerciseId: DEFAULT_EXERCISE_ID,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+});
   useEffect(() => {
     return () => {
       stopCamera();
@@ -84,18 +85,20 @@ export default function PoseTrackerPage() {
     machineRef.current = selectedExercise.createMachine();
     stableFeaturesRef.current = null;
 
-    setDebug((prev) => ({
-      ...prev,
-      exerciseId: selectedExercise.id,
-      exercisePhase: 'idle',
-      repCount: 0,
-      holdMs: 0,
-      statusText: 'Get ready',
-      currentLiftNorm: 0,
-      currentRepPeakLift: 0,
-      lastRepPeakLift: null,
-      sessionPeakLift: 0
-    }));
+setDebug((prev) => ({
+  ...prev,
+  exerciseId: selectedExercise.id,
+  posture: 'unknown',
+  avgKneeAngle: 0,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+}));
   }, [selectedExercise]);
 
   async function ensureDetector() {
@@ -176,23 +179,25 @@ export default function PoseTrackerPage() {
       machineRef.current = selectedExercise.createMachine();
       stableFeaturesRef.current = null;
 
-      setDebug({
-        fps: 0,
-        tracking: 'idle',
-        personDetected: false,
-        trackId: null,
-        confidence: 0,
-        visibleKeypoints: 0,
-        exerciseId: selectedExercise.id,
-        exercisePhase: 'idle',
-        repCount: 0,
-        holdMs: 0,
-        statusText: 'Get ready',
-        currentLiftNorm: 0,
-        currentRepPeakLift: 0,
-        lastRepPeakLift: null,
-        sessionPeakLift: 0
-      });
+ setDebug({
+  fps: 0,
+  tracking: 'idle',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  posture: 'unknown',
+  avgKneeAngle: 0,
+  exerciseId: selectedExercise.id,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+});
 
       setIsRunning(true);
       lastSeenRef.current = performance.now();
@@ -242,23 +247,25 @@ export default function PoseTrackerPage() {
     machineRef.current = selectedExercise.createMachine();
 
     setIsRunning(false);
-    setDebug({
-      fps: 0,
-      tracking: 'idle',
-      personDetected: false,
-      trackId: null,
-      confidence: 0,
-      visibleKeypoints: 0,
-      exerciseId: selectedExercise.id,
-      exercisePhase: 'idle',
-      repCount: 0,
-      holdMs: 0,
-      statusText: 'Get ready',
-      currentLiftNorm: 0,
-      currentRepPeakLift: 0,
-      lastRepPeakLift: null,
-      sessionPeakLift: 0
-    });
+  setDebug({
+  fps: 0,
+  tracking: 'idle',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  posture: 'unknown',
+  avgKneeAngle: 0,
+  exerciseId: selectedExercise.id,
+  exercisePhase: 'idle',
+  repCount: 0,
+  holdMs: 0,
+  statusText: 'Get ready',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0,
+  lastRepPeakLift: null,
+  sessionPeakLift: 0
+});
 
     clearCanvas();
   }
@@ -320,23 +327,25 @@ export default function PoseTrackerPage() {
 
           machineRef.current = selectedExercise.advance(machineRef.current, stableFeatures);
 
-          setDebug((prev) => ({
-            ...prev,
-            tracking: 'active',
-            personDetected: true,
-            trackId: smoothed.id,
-            confidence: smoothed.confidence,
-            visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
-            exerciseId: selectedExercise.id,
-            exercisePhase: machineRef.current.phase,
-            repCount: machineRef.current.repCount,
-            holdMs: machineRef.current.holdMs,
-            statusText: machineRef.current.statusText,
-            currentLiftNorm: selectedExercise.getCurrentLift(stableFeatures),
-            currentRepPeakLift: machineRef.current.currentRepPeakLift,
-            lastRepPeakLift: machineRef.current.lastRepPeakLift,
-            sessionPeakLift: machineRef.current.sessionPeakLift
-          }));
+    setDebug((prev) => ({
+  ...prev,
+  tracking: 'active',
+  personDetected: true,
+  trackId: smoothed.id,
+  confidence: smoothed.confidence,
+  visibleKeypoints: visibleKeypointCount(smoothed.keypoints),
+  posture: stableFeatures.posture,
+  avgKneeAngle: stableFeatures.avgKneeAngle,
+  exerciseId: selectedExercise.id,
+  exercisePhase: machineRef.current.phase,
+  repCount: machineRef.current.repCount,
+  holdMs: machineRef.current.holdMs,
+  statusText: machineRef.current.statusText,
+  currentLiftNorm: selectedExercise.getCurrentLift(stableFeatures),
+  currentRepPeakLift: machineRef.current.currentRepPeakLift,
+  lastRepPeakLift: machineRef.current.lastRepPeakLift,
+  sessionPeakLift: machineRef.current.sessionPeakLift
+}));
         }
       } else {
         if (ts - lastSeenRef.current > LOST_AFTER_MS) {
@@ -344,20 +353,22 @@ export default function PoseTrackerPage() {
           stableFeaturesRef.current = null;
           machineRef.current = selectedExercise.createMachine();
 
-          setDebug((prev) => ({
-            ...prev,
-            tracking: 'lost',
-            personDetected: false,
-            trackId: null,
-            confidence: 0,
-            visibleKeypoints: 0,
-            exerciseId: selectedExercise.id,
-            exercisePhase: 'lost',
-            holdMs: 0,
-            statusText: 'Person lost - step back into frame',
-            currentLiftNorm: 0,
-            currentRepPeakLift: 0
-          }));
+   setDebug((prev) => ({
+  ...prev,
+  tracking: 'lost',
+  personDetected: false,
+  trackId: null,
+  confidence: 0,
+  visibleKeypoints: 0,
+  posture: 'unknown',
+  avgKneeAngle: 0,
+  exerciseId: selectedExercise.id,
+  exercisePhase: 'lost',
+  holdMs: 0,
+  statusText: 'Person lost - step back into frame',
+  currentLiftNorm: 0,
+  currentRepPeakLift: 0
+}));
         } else if (activeTrackRef.current) {
           drawTrack(ctx, activeTrackRef.current, canvas.height);
         }
@@ -563,10 +574,14 @@ export default function PoseTrackerPage() {
             <Metric label="Tracking State" value={debug.tracking} />
             <Metric label="Person Detected" value={debug.personDetected ? 'Yes' : 'No'} />
             <Metric label="Track ID" value={debug.trackId ?? '—'} />
-            <Metric label="Visible Keypoints" value={debug.visibleKeypoints} />
-            <Metric label="Confidence" value={`${(debug.confidence * 100).toFixed(0)}%`} />
-            <Metric label="FPS" value={debug.fps} />
-            <Metric label="Exercise" value={selectedExercise.label} />
+            
+           <Metric label="Visible Keypoints" value={debug.visibleKeypoints} />
+<Metric label="Confidence" value={`${(debug.confidence * 100).toFixed(0)}%`} />
+<Metric label="FPS" value={debug.fps} />
+<Metric label="Posture" value={debug.posture} />
+<Metric label="Avg Knee Angle" value={Math.round(debug.avgKneeAngle)} />
+<Metric label="Exercise" value={selectedExercise.label} />
+            
             <Metric label="Exercise Phase" value={debug.exercisePhase} />
             <Metric label="Rep Count" value={debug.repCount} />
             <Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
