@@ -29,6 +29,7 @@ import {
   smoothFrame,
   type FrameRect
 } from '../lib/framing/autoFramer';
+import { assessFraming } from '../lib/framing/framingAdvisor';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
@@ -106,7 +107,9 @@ export default function PoseTrackerPage({
     currentLiftNorm: 0,
     currentRepPeakLift: 0,
     lastRepPeakLift: null,
-    sessionPeakLift: 0
+    sessionPeakLift: 0,
+    framingStatus: 'no_person',
+    framingMessage: 'Step into the frame'
   });
 
   useEffect(() => {
@@ -132,7 +135,9 @@ export default function PoseTrackerPage({
       currentLiftNorm: 0,
       currentRepPeakLift: 0,
       lastRepPeakLift: null,
-      sessionPeakLift: 0
+      sessionPeakLift: 0,
+      framingStatus: 'no_person',
+      framingMessage: 'Step into the frame'
     }));
   }, [selectedExercise]);
 
@@ -254,7 +259,9 @@ export default function PoseTrackerPage({
         currentLiftNorm: 0,
         currentRepPeakLift: 0,
         lastRepPeakLift: null,
-        sessionPeakLift: 0
+        sessionPeakLift: 0,
+        framingStatus: 'no_person',
+        framingMessage: 'Step into the frame'
       });
 
       setIsRunning(true);
@@ -324,7 +331,9 @@ export default function PoseTrackerPage({
       currentLiftNorm: 0,
       currentRepPeakLift: 0,
       lastRepPeakLift: null,
-      sessionPeakLift: 0
+      sessionPeakLift: 0,
+      framingStatus: 'no_person',
+      framingMessage: 'Step into the frame'
     });
 
     clearCanvas();
@@ -387,6 +396,16 @@ export default function PoseTrackerPage({
 
           machineRef.current = selectedExercise.advance(machineRef.current, stableFeatures);
 
+          const framing = assessFraming({
+            track: smoothedPose,
+            frameWidth: video.videoWidth,
+            frameHeight: video.videoHeight,
+            overheadMode:
+              selectedExercise.id === 'raise_right_hand' ||
+              selectedExercise.id === 'raise_left_hand' ||
+              selectedExercise.id === 'both_hands_up'
+          });
+
           setDebug((prev) => ({
             ...prev,
             tracking: 'active',
@@ -407,7 +426,9 @@ export default function PoseTrackerPage({
             currentLiftNorm: selectedExercise.getCurrentLift(stableFeatures),
             currentRepPeakLift: machineRef.current.currentRepPeakLift,
             lastRepPeakLift: machineRef.current.lastRepPeakLift,
-            sessionPeakLift: machineRef.current.sessionPeakLift
+            sessionPeakLift: machineRef.current.sessionPeakLift,
+            framingStatus: framing.status,
+            framingMessage: framing.message
           }));
         }
       } else {
@@ -432,7 +453,9 @@ export default function PoseTrackerPage({
             holdMs: 0,
             statusText: 'Person lost - step back into frame',
             currentLiftNorm: 0,
-            currentRepPeakLift: 0
+            currentRepPeakLift: 0,
+            framingStatus: 'no_person',
+            framingMessage: 'Step into the frame'
           }));
         }
       }
@@ -610,6 +633,18 @@ export default function PoseTrackerPage({
         <section>
           <div
             style={{
+              ...cardStyle,
+              marginBottom: 14,
+              borderColor: debug.framingStatus === 'good' ? '#166534' : '#7c2d12',
+              background: debug.framingStatus === 'good' ? '#052e16' : '#3f1d0b'
+            }}
+          >
+            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 4 }}>Framing Guidance</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{debug.framingMessage}</div>
+          </div>
+
+          <div
+            style={{
               position: 'relative',
               background: '#050816',
               borderRadius: 16,
@@ -704,6 +739,8 @@ export default function PoseTrackerPage({
           <Metric label="FPS" value={debug.fps} />
           <Metric label="Posture" value={debug.posture} />
           <Metric label="Avg Knee Angle" value={Math.round(debug.avgKneeAngle)} />
+          <Metric label="Framing Status" value={debug.framingStatus} />
+          <Metric label="Framing Guidance" value={debug.framingMessage} />
           <Metric label="Exercise" value={selectedExercise.label} />
           <Metric label="Exercise Phase" value={debug.exercisePhase} />
           <Metric label="Rep Count" value={debug.repCount} />
@@ -720,7 +757,7 @@ export default function PoseTrackerPage({
           <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
             {sessionMode
               ? 'Session mode is active. Complete the target reps to advance.'
-              : 'Standalone exercise mode. Auto-framing keeps the whole person centered in view.'}
+              : 'Standalone exercise mode. Auto-framing keeps the person centered, and framing guidance tells the user when the camera view is insufficient.'}
           </div>
         </aside>
       </div>
