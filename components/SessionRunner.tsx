@@ -85,7 +85,6 @@ return () => window.clearInterval(timer);
 
 useEffect(() => {
 if (runnerPhase !== 'session_intro') return;
-
 if (!readiness.ready) return;
 
 if (gestureSignal.detected && gestureSignal.holdMs >= 1000) {
@@ -95,7 +94,7 @@ setElapsedMs(0);
 setCountdownValue(3);
 setRunnerPhase('countdown');
 }
-}, [runnerPhase, readiness, gestureSignal]);
+}, [runnerPhase, readiness.ready, gestureSignal.detected, gestureSignal.holdMs]);
 
 useEffect(() => {
 if (runnerPhase !== 'precheck') return;
@@ -104,7 +103,7 @@ if (readiness.ready) {
 setCountdownValue(3);
 setRunnerPhase('countdown');
 }
-}, [runnerPhase, readiness]);
+}, [runnerPhase, readiness.ready]);
 
 useEffect(() => {
 if (runnerPhase !== 'countdown') return;
@@ -125,7 +124,7 @@ setCountdownValue((prev) => prev - 1);
 }, 1000);
 
 return () => window.clearTimeout(timer);
-}, [runnerPhase, countdownValue, readiness, latestDebug, sessionStartedAt]);
+}, [runnerPhase, countdownValue, readiness.ready, sessionStartedAt]); // fixed
 
 useEffect(() => {
 if (runnerPhase !== 'exercise_complete') return;
