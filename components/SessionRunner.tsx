@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import PoseTrackerPage from './PoseTrackerPage';
 import { EXERCISE_REGISTRY } from '../lib/exercises/exerciseRegistry';
 import type {
