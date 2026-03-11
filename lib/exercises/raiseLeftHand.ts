@@ -27,6 +27,7 @@ export function advanceRaiseLeftHand(
     features.leftElbowScore < MIN_KEYPOINT_SCORE;
 
   const peakLift = Math.max(machine.currentRepPeakLift, features.leftHandLiftNorm);
+
   let next: ExerciseMachine = {
     ...machine,
     lastFeatures: features,
