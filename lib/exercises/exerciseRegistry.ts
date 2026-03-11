@@ -1,12 +1,15 @@
 import type { ExerciseController } from '../poseTypes';
+
 import {
   advanceRaiseRightHand,
   createRaiseRightHandMachine
 } from './raiseRightHand';
+
 import {
   advanceRaiseLeftHand,
   createRaiseLeftHandMachine
 } from './raiseLeftHand';
+
 import {
   advanceBothHandsUp,
   createBothHandsUpMachine
@@ -20,6 +23,7 @@ export const EXERCISE_REGISTRY: Record<string, ExerciseController> = {
     advance: advanceRaiseRightHand,
     getCurrentLift: (features) => features.rightHandLiftNorm
   },
+
   raise_left_hand: {
     id: 'raise_left_hand',
     label: 'Raise Left Hand',
@@ -27,6 +31,7 @@ export const EXERCISE_REGISTRY: Record<string, ExerciseController> = {
     advance: advanceRaiseLeftHand,
     getCurrentLift: (features) => features.leftHandLiftNorm
   },
+
   both_hands_up: {
     id: 'both_hands_up',
     label: 'Both Hands Up',
