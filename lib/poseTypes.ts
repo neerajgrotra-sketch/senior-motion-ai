@@ -16,6 +16,8 @@ export type DebugState = {
   currentRepPeakLift: number;
   lastRepPeakLift: number | null;
   sessionPeakLift: number;
+  framingStatus: string;
+  framingMessage: string;
 };
 
 export type PosePoint = {
