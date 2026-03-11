@@ -7,7 +7,8 @@ import '@mediapipe/pose';
 import type {
   DebugState,
   ExerciseFrameFeatures,
-  ExerciseMachine
+  ExerciseMachine,
+  ExerciseController
 } from '../lib/poseTypes';
 
 import {
@@ -82,6 +83,7 @@ export default function PoseTrackerPage({
     return EXERCISE_REGISTRY[selectedExerciseId] ?? EXERCISE_REGISTRY[DEFAULT_EXERCISE_ID];
   }, [selectedExerciseId]);
 
+  const selectedExerciseRef = useRef<ExerciseController>(selectedExercise);
   const machineRef = useRef<ExerciseMachine>(selectedExercise.createMachine());
 
   const [isRunning, setIsRunning] = useState(false);
@@ -119,6 +121,7 @@ export default function PoseTrackerPage({
   }, []);
 
   useEffect(() => {
+    selectedExerciseRef.current = selectedExercise;
     machineRef.current = selectedExercise.createMachine();
     stableFeaturesRef.current = null;
     completedCalledRef.current = false;
@@ -237,7 +240,8 @@ export default function PoseTrackerPage({
 
       await ensureDetector();
 
-      machineRef.current = selectedExercise.createMachine();
+      const currentExercise = selectedExerciseRef.current;
+      machineRef.current = currentExercise.createMachine();
       stableFeaturesRef.current = null;
       autoFrameRef.current = null;
       completedCalledRef.current = false;
@@ -251,7 +255,7 @@ export default function PoseTrackerPage({
         visibleKeypoints: 0,
         posture: 'unknown',
         avgKneeAngle: 0,
-        exerciseId: selectedExercise.id,
+        exerciseId: currentExercise.id,
         exercisePhase: 'idle',
         repCount: 0,
         holdMs: 0,
@@ -310,7 +314,9 @@ export default function PoseTrackerPage({
     activeTrackRef.current = null;
     stableFeaturesRef.current = null;
     autoFrameRef.current = null;
-    machineRef.current = selectedExercise.createMachine();
+
+    const currentExercise = selectedExerciseRef.current;
+    machineRef.current = currentExercise.createMachine();
     completedCalledRef.current = false;
 
     setIsRunning(false);
@@ -323,7 +329,7 @@ export default function PoseTrackerPage({
       visibleKeypoints: 0,
       posture: 'unknown',
       avgKneeAngle: 0,
-      exerciseId: selectedExercise.id,
+      exerciseId: currentExercise.id,
       exercisePhase: 'idle',
       repCount: 0,
       holdMs: 0,
@@ -341,9 +347,8 @@ export default function PoseTrackerPage({
 
   function handleToggleAutoFraming() {
     setAutoFramingEnabled((prev) => {
-      const next = !prev;
       autoFrameRef.current = null;
-      return next;
+      return !prev;
     });
   }
 
@@ -402,16 +407,17 @@ export default function PoseTrackerPage({
           const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
           stableFeaturesRef.current = stableFeatures;
 
-          machineRef.current = selectedExercise.advance(machineRef.current, stableFeatures);
+          const currentExercise = selectedExerciseRef.current;
+          machineRef.current = currentExercise.advance(machineRef.current, stableFeatures);
 
           const framing = assessFraming({
             track: smoothedPose,
             frameWidth: video.videoWidth,
             frameHeight: video.videoHeight,
             overheadMode:
-              selectedExercise.id === 'raise_right_hand' ||
-              selectedExercise.id === 'raise_left_hand' ||
-              selectedExercise.id === 'both_hands_up'
+              currentExercise.id === 'raise_right_hand' ||
+              currentExercise.id === 'raise_left_hand' ||
+              currentExercise.id === 'both_hands_up'
           });
 
           setDebug((prev) => ({
@@ -423,7 +429,7 @@ export default function PoseTrackerPage({
             visibleKeypoints: visibleKeypointCount(smoothedPose.keypoints),
             posture: stableFeatures.posture,
             avgKneeAngle: stableFeatures.avgKneeAngle,
-            exerciseId: selectedExercise.id,
+            exerciseId: currentExercise.id,
             exercisePhase: machineRef.current.phase,
             repCount: machineRef.current.repCount,
             holdMs: machineRef.current.holdMs,
@@ -431,7 +437,7 @@ export default function PoseTrackerPage({
               targetHoldSeconds && targetHoldSeconds > 0
                 ? `${machineRef.current.statusText} (target hold ${targetHoldSeconds}s)`
                 : machineRef.current.statusText,
-            currentLiftNorm: selectedExercise.getCurrentLift(stableFeatures),
+            currentLiftNorm: currentExercise.getCurrentLift(stableFeatures),
             currentRepPeakLift: machineRef.current.currentRepPeakLift,
             lastRepPeakLift: machineRef.current.lastRepPeakLift,
             sessionPeakLift: machineRef.current.sessionPeakLift,
@@ -444,7 +450,9 @@ export default function PoseTrackerPage({
           activeTrackRef.current = null;
           stableFeaturesRef.current = null;
           autoFrameRef.current = null;
-          machineRef.current = selectedExercise.createMachine();
+
+          const currentExercise = selectedExerciseRef.current;
+          machineRef.current = currentExercise.createMachine();
           trackForDraw = null;
 
           setDebug((prev) => ({
@@ -456,7 +464,7 @@ export default function PoseTrackerPage({
             visibleKeypoints: 0,
             posture: 'unknown',
             avgKneeAngle: 0,
-            exerciseId: selectedExercise.id,
+            exerciseId: currentExercise.id,
             exercisePhase: 'lost',
             holdMs: 0,
             statusText: 'Person lost - step back into frame',
