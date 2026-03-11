@@ -99,7 +99,7 @@ export default function PoseTrackerPage({
   const [showSkeleton, setShowSkeleton] = useState(true);
   const [showBox, setShowBox] = useState(true);
   const [showDots, setShowDots] = useState(true);
-  const [autoFramingEnabled, setAutoFramingEnabled] = useState(true);
+  const [autoFramingEnabled, setAutoFramingEnabled] = useState(false);
   const [error, setError] = useState('');
   const [debug, setDebug] = useState<DebugState>({
     fps: 0,
