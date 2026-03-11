@@ -53,11 +53,10 @@ if (!latestDebug.personDetected || latestDebug.tracking !== 'active') {
 return { ready: false, message: 'Step into the frame' };
 }
 
-if (latestDebug.framingStatus !== 'good') {
-return { ready: false, message: latestDebug.framingMessage };
-}
-
-if (currentStep.requiredPosture !== 'either' && latestDebug.posture !== currentStep.requiredPosture) {
+if (
+currentStep.requiredPosture !== 'either' &&
+latestDebug.posture !== currentStep.requiredPosture
+) {
 return {
 ready: false,
 message:
@@ -124,7 +123,7 @@ setCountdownValue((prev) => prev - 1);
 }, 1000);
 
 return () => window.clearTimeout(timer);
-}, [runnerPhase, countdownValue, readiness.ready, sessionStartedAt]); // fixed
+}, [runnerPhase, countdownValue, readiness.ready, sessionStartedAt, latestDebug?.posture]);
 
 useEffect(() => {
 if (runnerPhase !== 'exercise_complete') return;
@@ -295,8 +294,14 @@ marginBottom: 18
 <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Current Step</div>
 <div style={{ fontSize: 30, fontWeight: 800 }}>{currentExercise.label}</div>
 <div style={{ marginTop: 8, color: '#cbd5e1', fontSize: 18 }}>
-Target reps: {currentStep.targetReps} | Hold: {currentStep.targetHoldSeconds}s | Required posture: {currentStep.requiredPosture}
+Target reps: {currentStep.targetReps} | Hold: {currentStep.targetHoldSeconds}s |
+Required posture: {currentStep.requiredPosture}
 </div>
+{latestDebug?.framingMessage ? (
+<div style={{ marginTop: 10, color: '#93c5fd', fontSize: 15 }}>
+Camera guidance: {latestDebug.framingMessage}
+</div>
+) : null}
 </section>
 
 <div style={{ position: 'relative' }}>
@@ -328,7 +333,11 @@ onDebugStateChange={setLatestDebug}
 onControlGesture={setGestureSignal}
 />
 
-<CenteredOverlay visible={overlay.visible} title={overlay.title} subtitle={overlay.subtitle} />
+<CenteredOverlay
+visible={overlay.visible}
+title={overlay.title}
+subtitle={overlay.subtitle}
+/>
 </div>
 </div>
 </main>
