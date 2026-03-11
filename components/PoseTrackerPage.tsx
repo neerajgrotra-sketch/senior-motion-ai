@@ -31,13 +31,13 @@ import {
   type FrameRect
 } from '../lib/framing/autoFramer';
 import { assessFraming } from '../lib/framing/framingAdvisor';
+import type { SessionControlSignal } from '../lib/sessionTypes';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
 const DETECTION_INTERVAL_MS = 50;
 const PERSON_ID = 1;
 const LOST_AFTER_MS = 2000;
-
 const DEFAULT_EXERCISE_ID = 'raise_right_hand';
 
 type Props = {
@@ -50,6 +50,10 @@ type Props = {
     sessionPeakLift: number;
     lastRepPeakLift: number | null;
   }) => void;
+  externalStatusText?: string;
+  exerciseEnabled?: boolean;
+  onDebugStateChange?: (debug: DebugState) => void;
+  onControlGesture?: (signal: SessionControlSignal) => void;
 };
 
 export default function PoseTrackerPage({
@@ -57,7 +61,11 @@ export default function PoseTrackerPage({
   sessionMode = false,
   targetReps,
   targetHoldSeconds,
-  onExerciseComplete
+  onExerciseComplete,
+  externalStatusText,
+  exerciseEnabled = true,
+  onDebugStateChange,
+  onControlGesture
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -72,6 +80,7 @@ export default function PoseTrackerPage({
   const stableFeaturesRef = useRef<ExerciseFrameFeatures | null>(null);
   const autoFrameRef = useRef<FrameRect | null>(null);
   const completedCalledRef = useRef(false);
+  const startGestureSinceRef = useRef<number | null>(null);
 
   const [localExerciseId, setLocalExerciseId] = useState(DEFAULT_EXERCISE_ID);
 
@@ -165,6 +174,10 @@ export default function PoseTrackerPage({
     onExerciseComplete
   ]);
 
+  useEffect(() => {
+    onDebugStateChange?.(debug);
+  }, [debug, onDebugStateChange]);
+
   async function ensureDetector() {
     if (!detectorRef.current) {
       detectorRef.current = await poseDetection.createDetector(
@@ -226,9 +239,7 @@ export default function PoseTrackerPage({
       setError('');
 
       const video = videoRef.current;
-      if (!video) {
-        throw new Error('Video element not available.');
-      }
+      if (!video) throw new Error('Video element not available.');
 
       const stream = await getCameraStream();
       streamRef.current = stream;
@@ -245,6 +256,7 @@ export default function PoseTrackerPage({
       stableFeaturesRef.current = null;
       autoFrameRef.current = null;
       completedCalledRef.current = false;
+      startGestureSinceRef.current = null;
 
       setDebug({
         fps: 0,
@@ -280,16 +292,8 @@ export default function PoseTrackerPage({
 
       animationRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
-      console.error('Camera/model start failed:', err);
-
-      let message = 'Unknown error';
-      if (err instanceof Error) {
-        message = `${err.name}: ${err.message}`;
-      } else if (typeof err === 'string') {
-        message = err;
-      }
-
-      setError(message);
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Could not start camera');
     }
   }
 
@@ -300,9 +304,7 @@ export default function PoseTrackerPage({
     }
 
     if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) {
-        track.stop();
-      }
+      for (const track of streamRef.current.getTracks()) track.stop();
       streamRef.current = null;
     }
 
@@ -314,6 +316,7 @@ export default function PoseTrackerPage({
     activeTrackRef.current = null;
     stableFeaturesRef.current = null;
     autoFrameRef.current = null;
+    startGestureSinceRef.current = null;
 
     const currentExercise = selectedExerciseRef.current;
     machineRef.current = currentExercise.createMachine();
@@ -407,8 +410,29 @@ export default function PoseTrackerPage({
           const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
           stableFeaturesRef.current = stableFeatures;
 
+          const eitherHandUp =
+            stableFeatures.leftHandAboveShoulder || stableFeatures.rightHandAboveShoulder;
+
+          let gestureHoldMs = 0;
+          if (eitherHandUp && stableFeatures.postureStable) {
+            if (startGestureSinceRef.current == null) {
+              startGestureSinceRef.current = ts;
+            }
+            gestureHoldMs = ts - startGestureSinceRef.current;
+          } else {
+            startGestureSinceRef.current = null;
+          }
+
+          onControlGesture?.({
+            detected: eitherHandUp,
+            holdMs: gestureHoldMs
+          });
+
           const currentExercise = selectedExerciseRef.current;
-          machineRef.current = currentExercise.advance(machineRef.current, stableFeatures);
+
+          if (exerciseEnabled) {
+            machineRef.current = currentExercise.advance(machineRef.current, stableFeatures);
+          }
 
           const framing = assessFraming({
             track: smoothedPose,
@@ -433,10 +457,11 @@ export default function PoseTrackerPage({
             exercisePhase: machineRef.current.phase,
             repCount: machineRef.current.repCount,
             holdMs: machineRef.current.holdMs,
-            statusText:
-              targetHoldSeconds && targetHoldSeconds > 0
-                ? `${machineRef.current.statusText} (target hold ${targetHoldSeconds}s)`
-                : machineRef.current.statusText,
+            statusText: externalStatusText
+              ? externalStatusText
+              : targetHoldSeconds && targetHoldSeconds > 0
+              ? `${machineRef.current.statusText} (target hold ${targetHoldSeconds}s)`
+              : machineRef.current.statusText,
             currentLiftNorm: currentExercise.getCurrentLift(stableFeatures),
             currentRepPeakLift: machineRef.current.currentRepPeakLift,
             lastRepPeakLift: machineRef.current.lastRepPeakLift,
@@ -450,10 +475,13 @@ export default function PoseTrackerPage({
           activeTrackRef.current = null;
           stableFeaturesRef.current = null;
           autoFrameRef.current = null;
+          startGestureSinceRef.current = null;
 
           const currentExercise = selectedExerciseRef.current;
           machineRef.current = currentExercise.createMachine();
           trackForDraw = null;
+
+          onControlGesture?.({ detected: false, holdMs: 0 });
 
           setDebug((prev) => ({
             ...prev,
@@ -467,7 +495,7 @@ export default function PoseTrackerPage({
             exerciseId: currentExercise.id,
             exercisePhase: 'lost',
             holdMs: 0,
-            statusText: 'Person lost - step back into frame',
+            statusText: externalStatusText ?? 'Person lost - step back into frame',
             currentLiftNorm: 0,
             currentRepPeakLift: 0,
             framingStatus: 'no_person',
@@ -500,7 +528,6 @@ export default function PoseTrackerPage({
     ctx.clearRect(0, 0, outputWidth, outputHeight);
 
     const fallbackFrame = createDefaultFrame(video.videoWidth, video.videoHeight);
-
     let frame = fallbackFrame;
 
     if (autoFramingEnabled && track) {
@@ -635,7 +662,9 @@ export default function PoseTrackerPage({
           </div>
         )}
 
-        <div style={{ marginTop: 8, color: '#cbd5e1' }}>{debug.statusText}</div>
+        <div style={{ marginTop: 8, color: '#cbd5e1' }}>
+          {externalStatusText ?? debug.statusText}
+        </div>
       </div>
 
       <div
@@ -772,8 +801,8 @@ export default function PoseTrackerPage({
 
           <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
             {sessionMode
-              ? 'Session mode is active. Complete the target reps to advance.'
-              : 'Standalone exercise mode. Auto-framing keeps the person centered, and framing guidance tells the user when the camera view is insufficient.'}
+              ? 'Session mode is active.'
+              : 'Standalone exercise mode. Auto-framing keeps the person centered.'}
           </div>
         </aside>
       </div>
