@@ -339,6 +339,14 @@ export default function PoseTrackerPage({
     clearCanvas();
   }
 
+  function handleToggleAutoFraming() {
+    setAutoFramingEnabled((prev) => {
+      const next = !prev;
+      autoFrameRef.current = null;
+      return next;
+    });
+  }
+
   function clearCanvas() {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -498,7 +506,7 @@ export default function PoseTrackerPage({
       autoFrameRef.current = smoothedFrame;
       frame = smoothedFrame;
     } else {
-      autoFrameRef.current = fallbackFrame;
+      autoFrameRef.current = null;
       frame = fallbackFrame;
     }
 
@@ -705,7 +713,7 @@ export default function PoseTrackerPage({
               {showDots ? 'Hide Keypoints' : 'Show Keypoints'}
             </button>
             <button
-              onClick={() => setAutoFramingEnabled((v) => !v)}
+              onClick={handleToggleAutoFraming}
               style={buttonStyle(autoFramingEnabled ? '#15803d' : '#475569')}
             >
               {autoFramingEnabled ? 'Auto-Framing On' : 'Auto-Framing Off'}
