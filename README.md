@@ -1,5 +1,6 @@
 # senior-motion-ai
-This branch is to build the session
+This branch is to build the session- Working well. After building session, camera obverlays on exercises. 
+After this we will focus on UI/ UX on session runner and we will create another branch
 What we’ll design on this branch
 
 We’re going to define the MVP session system with these concepts:
