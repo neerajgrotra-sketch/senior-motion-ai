@@ -3,7 +3,7 @@ import {
   PoseLandmarks,
   PosePoint,
   SignalDefinition,
-} from '@/lib/exercises/exerciseIntentTypes'
+} from '../exercises/exerciseIntentTypes'
 
 function getPoint(landmarks: PoseLandmarks, name: LandmarkName): PosePoint | null {
   return landmarks[name] ?? null
@@ -75,6 +75,7 @@ export function deriveIntentSignals(params: {
       case 'relative_y': {
         const pointA = signal.config.pointA as LandmarkName | undefined
         const pointB = signal.config.pointB as LandmarkName | undefined
+
         if (!pointA || !pointB) {
           result[signal.id] = 0
           break
@@ -89,6 +90,7 @@ export function deriveIntentSignals(params: {
       case 'relative_x': {
         const pointA = signal.config.pointA as LandmarkName | undefined
         const pointB = signal.config.pointB as LandmarkName | undefined
+
         if (!pointA || !pointB) {
           result[signal.id] = 0
           break
@@ -103,6 +105,7 @@ export function deriveIntentSignals(params: {
       case 'distance': {
         const pointA = signal.config.pointA as LandmarkName | undefined
         const pointB = signal.config.pointB as LandmarkName | undefined
+
         if (!pointA || !pointB) {
           result[signal.id] = 0
           break
@@ -118,6 +121,7 @@ export function deriveIntentSignals(params: {
         const pointA = signal.config.pointA as LandmarkName | undefined
         const vertex = signal.config.vertex as LandmarkName | undefined
         const pointC = signal.config.pointC as LandmarkName | undefined
+
         if (!pointA || !vertex || !pointC) {
           result[signal.id] = 0
           break
@@ -137,6 +141,7 @@ export function deriveIntentSignals(params: {
 
       case 'velocity': {
         const sourceSignalId = signal.config.sourceSignalId as string | undefined
+
         if (!sourceSignalId || deltaMs <= 0) {
           result[signal.id] = 0
           break
