@@ -65,7 +65,15 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     return currentStep ? mapStepExerciseToIntent(currentStep.exerciseId) : null;
   }, [currentStep]);
 
-  const intentRuntime = useExerciseIntentRuntime(currentIntentExercise);
+  const {
+    start: startIntentRuntime,
+    reset: resetIntentRuntime,
+    processLandmarks,
+    motionState: intentMotionState,
+    feedbackMessage: intentFeedbackMessage,
+    lastErrorCode: intentLastErrorCode,
+    repCount: intentRepCount
+  } = useExerciseIntentRuntime(currentIntentExercise);
 
   const progressText = useMemo(() => {
     return `${Math.min(currentStepIndex + 1, session.steps.length)} / ${session.steps.length}`;
@@ -143,7 +151,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
       currentStepStartPostureRef.current = latestDebug?.posture ?? 'unknown';
       stepCompletionHandledRef.current = false;
       setShowExerciseIntroOverlay(true);
-      intentRuntime.start();
+      startIntentRuntime();
       setRunnerPhase('active');
       return;
     }
@@ -159,7 +167,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     readiness.ready,
     sessionStartedAt,
     latestDebug?.posture,
-    intentRuntime
+    startIntentRuntime
   ]);
 
   useEffect(() => {
@@ -232,7 +240,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     if (runnerPhase !== 'active') return;
     if (!currentIntentExercise) return;
 
-    intentRuntime.processLandmarks(landmarks);
+    processLandmarks(landmarks);
   }
 
   function advanceToNextStep() {
@@ -251,7 +259,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
       return;
     }
 
-    intentRuntime.reset();
+    resetIntentRuntime();
     setCurrentStepIndex((prev) => prev + 1);
     setRunnerPhase('precheck');
     setCountdownValue(3);
@@ -385,13 +393,13 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                 Intent-Aware Guidance
               </div>
               <div style={{ marginTop: 6, fontSize: 20, fontWeight: 800 }}>
-                {intentRuntime.feedbackMessage || currentIntentExercise.coaching.intro}
+                {intentFeedbackMessage || currentIntentExercise.coaching.intro}
               </div>
               <div style={{ marginTop: 8, color: '#cbd5e1', fontSize: 14 }}>
-                Intent state: {intentRuntime.motionState} | Intent reps: {intentRuntime.repCount}
+                Intent state: {intentMotionState} | Intent reps: {intentRepCount}
               </div>
               <div style={{ marginTop: 4, color: '#fca5a5', fontSize: 14 }}>
-                Intent error: {intentRuntime.lastErrorCode ?? 'none'}
+                Intent error: {intentLastErrorCode ?? 'none'}
               </div>
             </div>
           ) : (
