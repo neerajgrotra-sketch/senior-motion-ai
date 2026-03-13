@@ -32,6 +32,7 @@ import {
   type FrameRect
 } from '../lib/framing/autoFramer';
 import { assessFraming } from '../lib/framing/framingAdvisor';
+import { mapTrackKeypointsToIntentLandmarks } from '../lib/pose/mapTrackKeypointsToIntentLandmarks';
 import type { SessionControlSignal } from '../lib/sessionTypes';
 
 const VIDEO_WIDTH = 960;
@@ -418,8 +419,6 @@ export default function PoseTrackerPage({
 
       if (pose?.keypoints?.length) {
         const pointMap = keypointsToMap(pose.keypoints as any[]);
-        onPoseLandmarksChange?.(pointMap as PoseLandmarks);
-
         const built = buildPoseTrack(PERSON_ID, pointMap);
 
         if (built) {
@@ -427,6 +426,21 @@ export default function PoseTrackerPage({
           activeTrackRef.current = smoothedPose;
           trackForDraw = smoothedPose;
           lastSeenRef.current = ts;
+
+          onPoseLandmarksChange?.(
+            mapTrackKeypointsToIntentLandmarks(
+              smoothedPose.keypoints as Record<
+                string,
+                {
+                  x: number;
+                  y: number;
+                  z?: number;
+                  score: number;
+                  name?: string;
+                }
+              >
+            )
+          );
 
           const rawFeatures = extractFeatures(smoothedPose, ts);
           const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
