@@ -1,7 +1,7 @@
-import { ExerciseIntentModel } from '@/lib/exercises/exerciseIntentTypes'
-import { leftArmRaiseIntent } from '@/lib/exercises/leftArmRaiseIntent'
-import { rightArmRaiseIntent } from '@/lib/exercises/rightArmRaiseIntent'
-import { seatedKneeLiftIntent } from '@/lib/exercises/seatedKneeLiftIntent'
+import { ExerciseIntentModel } from './exerciseIntentTypes'
+import { leftArmRaiseIntent } from './leftArmRaiseIntent'
+import { rightArmRaiseIntent } from './rightArmRaiseIntent'
+import { seatedKneeLiftIntent } from './seatedKneeLiftIntent'
 
 export const exerciseIntentLibrary: ExerciseIntentModel[] = [
   rightArmRaiseIntent,
