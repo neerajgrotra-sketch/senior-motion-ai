@@ -5,11 +5,11 @@ import {
   ExerciseIntentModel,
   LiveIntentState,
   PoseLandmarks,
-} from '@/lib/exercises/exerciseIntentTypes'
+} from '../exercises/exerciseIntentTypes'
 import {
   createInitialIntentState,
   evaluateExerciseIntent,
-} from '@/lib/session/evaluateExerciseIntent'
+} from './evaluateExerciseIntent'
 
 export function useExerciseIntentRuntime(exercise: ExerciseIntentModel | null) {
   const [state, setState] = useState<LiveIntentState | null>(null)
