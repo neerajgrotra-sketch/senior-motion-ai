@@ -1,4 +1,4 @@
-import { ExerciseIntentModel } from '@/lib/exercises/exerciseIntentTypes'
+import { ExerciseIntentModel } from './exerciseIntentTypes'
 
 export const seatedKneeLiftIntent: ExerciseIntentModel = {
   id: 'seated-right-knee-lift',
