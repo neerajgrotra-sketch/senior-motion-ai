@@ -1,11 +1,11 @@
-import { deriveIntentSignals } from '@/lib/pose/deriveIntentSignals'
+import { deriveIntentSignals } from './deriveIntentSignals'
 import {
   ExerciseIntentModel,
   IntentErrorCode,
   IntentEvaluationResult,
   LiveIntentState,
   PoseLandmarks,
-} from '@/lib/exercises/exerciseIntentTypes'
+} from './exerciseIntentTypes'
 
 function isPrimaryRaised(currentValue: number, targetMin: number): boolean {
   return currentValue <= targetMin
@@ -183,14 +183,22 @@ export function evaluateExerciseIntent(params: {
 
   if (nextState.repInProgress && nextState.motionState === 'lifting') {
     const repElapsed = nextState.repStartedAtMs ? nowMs - nextState.repStartedAtMs : 0
-    if (repElapsed > Math.max(minRepDurationMs / 2, 800) && exercise.errors.detectInsufficientRange) {
+
+    if (
+      repElapsed > Math.max(minRepDurationMs / 2, 800) &&
+      exercise.errors.detectInsufficientRange
+    ) {
       detectedErrorCode = 'insufficient_range'
       nextState.lastErrorCode = detectedErrorCode
       nextState.feedbackMessage = exercise.coaching.insufficientRange
     }
   }
 
-  if (nextState.repInProgress && nextState.motionState === 'lowering' && isBackAtStart(primary, startMax)) {
+  if (
+    nextState.repInProgress &&
+    nextState.motionState === 'lowering' &&
+    isBackAtStart(primary, startMax)
+  ) {
     const totalRepMs = nextState.repStartedAtMs ? nowMs - nextState.repStartedAtMs : 0
     const returnDurationMs = nextState.returnStartedAtMs ? nowMs - nextState.returnStartedAtMs : 0
 
