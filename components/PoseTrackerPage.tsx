@@ -10,6 +10,7 @@ import type {
   ExerciseMachine,
   ExerciseController
 } from '../lib/poseTypes';
+import type { PoseLandmarks } from '../lib/exercises/exerciseIntentTypes';
 
 import {
   buildPoseTrack,
@@ -54,6 +55,7 @@ type Props = {
   exerciseEnabled?: boolean;
   onDebugStateChange?: (debug: DebugState) => void;
   onControlGesture?: (signal: SessionControlSignal) => void;
+  onPoseLandmarksChange?: (landmarks: PoseLandmarks) => void;
 };
 
 function getInitialDebugState(exerciseId: string): DebugState {
@@ -114,7 +116,8 @@ export default function PoseTrackerPage({
   externalStatusText,
   exerciseEnabled = true,
   onDebugStateChange,
-  onControlGesture
+  onControlGesture,
+  onPoseLandmarksChange
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -415,6 +418,8 @@ export default function PoseTrackerPage({
 
       if (pose?.keypoints?.length) {
         const pointMap = keypointsToMap(pose.keypoints as any[]);
+        onPoseLandmarksChange?.(pointMap as PoseLandmarks);
+
         const built = buildPoseTrack(PERSON_ID, pointMap);
 
         if (built) {
