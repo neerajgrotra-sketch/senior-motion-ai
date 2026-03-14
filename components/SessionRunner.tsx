@@ -72,7 +72,8 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     motionState: intentMotionState,
     feedbackMessage: intentFeedbackMessage,
     lastErrorCode: intentLastErrorCode,
-    repCount: intentRepCount
+    repCount: intentRepCount,
+    debugSignals
   } = useExerciseIntentRuntime(currentIntentExercise);
 
   const progressText = useMemo(() => {
@@ -386,7 +387,57 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                 </div>
               </div>
             </div>
-
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: '12px 14px',
+                  background: '#07101f',
+                  border: '1px solid #1f2942',
+                  borderRadius: 12,
+                  fontSize: 13,
+                  color: '#cbd5e1',
+                  lineHeight: 1.6
+                }}
+              >
+                <div style={{ color: '#93c5fd', fontWeight: 700, marginBottom: 6 }}>
+                  Intent Diagnostics
+                </div>
+                <div>
+                  Primary signal:{' '}
+                  <strong>
+                    {debugSignals.primary != null ? debugSignals.primary.toFixed(3) : 'null'}
+                  </strong>
+                </div>
+                <div>
+                  Opposite signal:{' '}
+                  <strong>
+                    {debugSignals.opposite != null ? debugSignals.opposite.toFixed(3) : 'null'}
+                  </strong>
+                </div>
+                <div>
+                  Trunk lean:{' '}
+                  <strong>
+                    {debugSignals.trunkLean != null ? debugSignals.trunkLean.toFixed(1) : 'null'}
+                  </strong>
+                </div>
+                <div>
+                  Target threshold:{' '}
+                  <strong>
+                    {currentIntentExercise?.thresholds.targetMin != null
+                      ? currentIntentExercise.thresholds.targetMin.toFixed(3)
+                      : 'n/a'}
+                  </strong>
+                </div>
+                <div>
+                  Start threshold:{' '}
+                  <strong>
+                    {currentIntentExercise?.thresholds.startMax != null
+                      ? currentIntentExercise.thresholds.startMax.toFixed(3)
+                      : 'n/a'}
+                  </strong>
+                </div>
+              </div>
+            
             <div style={coachFooterStyle}>
               <div style={{ color: '#94a3b8', fontSize: 13 }}>Session Progress</div>
               <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800 }}>
