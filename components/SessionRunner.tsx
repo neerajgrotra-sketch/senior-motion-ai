@@ -86,7 +86,7 @@ function getCoachMessage(params: {
   if (phase === 'rest') {
     return {
       headline: 'Take a short rest.',
-      subline: `Recover before the next step`,
+      subline: 'Recover before the next step',
       status: 'rest',
       error: null as string | null
     };
@@ -122,18 +122,9 @@ function getCoachMessage(params: {
   if (!debug.personDetected || debug.tracking !== 'active') {
     return {
       headline: 'Step into the frame.',
-      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps}`,
+      subline: 'We need to see you clearly before we begin',
       status: 'tracking',
       error: 'no_person'
-    };
-  }
-
-  if (debug.framingStatus !== 'good') {
-    return {
-      headline: debug.framingMessage || 'Adjust your position.',
-      subline: `We need a better camera view before coaching movement`,
-      status: 'framing',
-      error: debug.framingStatus
     };
   }
 
@@ -142,10 +133,11 @@ function getCoachMessage(params: {
   const holdMs = debug.holdMs ?? 0;
   const phaseName = debug.exercisePhase ?? 'idle';
   const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
+  const side = currentExerciseLabel.toLowerCase().includes('left') ? 'left' : 'right';
 
   if (phaseName === 'idle') {
     return {
-      headline: `Raise your ${currentExerciseLabel.toLowerCase().includes('left') ? 'left' : 'right'} hand slowly.`,
+      headline: `Raise your ${side} hand slowly.`,
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
       status: 'ready',
       error: null as string | null
@@ -163,7 +155,7 @@ function getCoachMessage(params: {
     }
 
     return {
-      headline: 'Good. Keep lifting.',
+      headline: `Good. Keep raising your ${side} hand.`,
       subline: `Reps ${completed}/${targetReps}`,
       status: 'lifting',
       error: null as string | null
@@ -208,13 +200,20 @@ function getCoachMessage(params: {
 
   if (phaseName === 'lost') {
     return {
-      headline: 'Step back into the frame.',
+      headline: 'Please come back into view.',
       subline: 'We lost tracking for a moment',
       status: 'tracking',
       error: 'lost'
     };
   }
 
+  return {
+    headline: `Raise your ${side} hand slowly.`,
+    subline: `Reps ${completed}/${targetReps}`,
+    status: 'active',
+    error: null as string | null
+  };
+}
   return {
     headline: 'Continue the movement.',
     subline: `Reps ${completed}/${targetReps}`,
