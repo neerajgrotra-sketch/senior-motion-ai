@@ -136,6 +136,22 @@ export default function PoseTrackerPage({
   const startGestureSinceRef = useRef<number | null>(null);
   const isStartingRef = useRef(false);
 
+  const onPoseLandmarksChangeRef = useRef<Props['onPoseLandmarksChange']>(onPoseLandmarksChange);
+  const onControlGestureRef = useRef<Props['onControlGesture']>(onControlGesture);
+  const onExerciseCompleteRef = useRef<Props['onExerciseComplete']>(onExerciseComplete);
+
+  useEffect(() => {
+    onPoseLandmarksChangeRef.current = onPoseLandmarksChange;
+  }, [onPoseLandmarksChange]);
+
+  useEffect(() => {
+    onControlGestureRef.current = onControlGesture;
+  }, [onControlGesture]);
+
+  useEffect(() => {
+    onExerciseCompleteRef.current = onExerciseComplete;
+  }, [onExerciseComplete]);
+
   const [localExerciseId, setLocalExerciseId] = useState(DEFAULT_EXERCISE_ID);
 
   const selectedExerciseId = sessionMode
@@ -193,25 +209,18 @@ export default function PoseTrackerPage({
   }, [targetHoldSeconds]);
 
   useEffect(() => {
-    if (!sessionMode || !onExerciseComplete || completedCalledRef.current) return;
+    if (!sessionMode || completedCalledRef.current) return;
     if (!targetReps) return;
 
     if (debug.repCount >= targetReps) {
       completedCalledRef.current = true;
-      onExerciseComplete({
+      onExerciseCompleteRef.current?.({
         completedReps: debug.repCount,
         sessionPeakLift: debug.sessionPeakLift,
         lastRepPeakLift: debug.lastRepPeakLift
       });
     }
-  }, [
-    debug.repCount,
-    debug.sessionPeakLift,
-    debug.lastRepPeakLift,
-    targetReps,
-    sessionMode,
-    onExerciseComplete
-  ]);
+  }, [debug.repCount, debug.sessionPeakLift, debug.lastRepPeakLift, targetReps, sessionMode]);
 
   useEffect(() => {
     onDebugStateChange?.(debug);
@@ -427,20 +436,19 @@ export default function PoseTrackerPage({
           trackForDraw = smoothedPose;
           lastSeenRef.current = ts;
 
-          onPoseLandmarksChange?.(
-            mapTrackKeypointsToIntentLandmarks(
-              smoothedPose.keypoints as Record<
-                string,
-                {
-                  x: number;
-                  y: number;
-                  z?: number;
-                  score: number;
-                  name?: string;
-                }
-              >
-            )
+          const intentLandmarks = mapTrackKeypointsToIntentLandmarks(
+            smoothedPose.keypoints as Record<
+              string,
+              {
+                x: number;
+                y: number;
+                z?: number;
+                score?: number;
+              }
+            >
           );
+
+          onPoseLandmarksChangeRef.current?.(intentLandmarks);
 
           const rawFeatures = extractFeatures(smoothedPose, ts);
           const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
@@ -459,7 +467,7 @@ export default function PoseTrackerPage({
             startGestureSinceRef.current = null;
           }
 
-          onControlGesture?.({
+          onControlGestureRef.current?.({
             detected: eitherHandUp,
             holdMs: gestureHoldMs
           });
@@ -517,7 +525,7 @@ export default function PoseTrackerPage({
           machineRef.current = currentExercise.createMachine();
           trackForDraw = null;
 
-          onControlGesture?.({ detected: false, holdMs: 0 });
+          onControlGestureRef.current?.({ detected: false, holdMs: 0 });
 
           setDebug((prev) => ({
             ...prev,
@@ -641,7 +649,7 @@ export default function PoseTrackerPage({
 
     if (showDots) {
       for (const kp of Object.values(track.keypoints)) {
-        if (kp.score < 0.25) continue;
+        if (!kp || kp.score < 0.25) continue;
 
         const mapped = mapPointFromVideoToFrame(kp, frame, outputWidth, outputHeight);
 
