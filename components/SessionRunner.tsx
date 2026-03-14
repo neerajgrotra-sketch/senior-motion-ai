@@ -336,124 +336,174 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
       : undefined;
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24 }}>
-      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        <div
-          style={{
-            background: '#121a31',
-            border: '1px solid #1f2942',
-            borderRadius: 16,
-            padding: 16,
-            marginBottom: 18,
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 16,
-            flexWrap: 'wrap'
-          }}
-        >
-          <div>
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>Session</div>
-            <div style={{ fontSize: 24, fontWeight: 800 }}>{session.name}</div>
-          </div>
-
-          <div>
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>Progress</div>
-            <div style={{ fontSize: 24, fontWeight: 800 }}>{progressText}</div>
-          </div>
-
-          <div>
-            <div style={{ color: '#94a3b8', fontSize: 13 }}>Elapsed Time</div>
-            <div style={{ fontSize: 24, fontWeight: 800 }}>{formatElapsed(elapsedMs)}</div>
-          </div>
-
-          <button onClick={onCancel} style={buttonStyle('#7f1d1d')}>
+    <main style={{ minHeight: '100vh', padding: 24, background: '#020817' }}>
+      <div style={{ maxWidth: 1500, margin: '0 auto' }}>
+        <div style={headerStyle}>
+          <HeaderMetric label="Session" value={session.name} align="left" />
+          <HeaderMetric label="Progress" value={progressText} />
+          <HeaderMetric label="Elapsed Time" value={formatElapsed(elapsedMs)} />
+          <button onClick={onCancel} style={buttonStyle('#991b1b')}>
             Cancel Session
           </button>
         </div>
 
-        <section
-          style={{
-            background: '#121a31',
-            border: '1px solid #1f2942',
-            borderRadius: 16,
-            padding: 18,
-            marginBottom: 18
-          }}
-        >
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Current Step</div>
-          <div style={{ fontSize: 30, fontWeight: 800 }}>{currentExercise.label}</div>
-          <div style={{ marginTop: 8, color: '#cbd5e1', fontSize: 18 }}>
-            Target reps: {currentStep.targetReps} | Hold: {currentStep.targetHoldSeconds}s |
-            Required posture: {currentStep.requiredPosture}
-          </div>
+        <div style={heroGridStyle}>
+          <section style={coachPanelStyle}>
+            <div style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>
+              Current Step
+            </div>
 
-          {currentIntentExercise ? (
-            <div style={{ marginTop: 12, padding: 12, background: '#0f172a', borderRadius: 12 }}>
-              <div style={{ color: '#93c5fd', fontSize: 14, fontWeight: 700 }}>
-                Intent-Aware Guidance
+            <div style={{ marginTop: 10, fontSize: 42, fontWeight: 900, lineHeight: 1.05 }}>
+              {currentExercise.label}
+            </div>
+
+            <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 18, lineHeight: 1.5 }}>
+              Target reps: <strong>{currentStep.targetReps}</strong> | Hold:{' '}
+              <strong>{currentStep.targetHoldSeconds}s</strong> | Required posture:{' '}
+              <strong>{currentStep.requiredPosture}</strong>
+            </div>
+
+            <div style={instructionCardStyle}>
+              <div style={smallLabelStyle}>Intent-Aware Guidance</div>
+              <div style={{ marginTop: 8, fontSize: 34, fontWeight: 900, lineHeight: 1.12 }}>
+                {intentFeedbackMessage || currentIntentExercise?.coaching.intro || 'Get ready.'}
               </div>
-              <div style={{ marginTop: 6, fontSize: 20, fontWeight: 800 }}>
-                {intentFeedbackMessage || currentIntentExercise.coaching.intro}
+              <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16 }}>
+                Intent state: <strong>{intentMotionState}</strong> | Intent reps:{' '}
+                <strong>{intentRepCount}</strong>
               </div>
-              <div style={{ marginTop: 8, color: '#cbd5e1', fontSize: 14 }}>
-                Intent state: {intentMotionState} | Intent reps: {intentRepCount}
-              </div>
-              <div style={{ marginTop: 4, color: '#fca5a5', fontSize: 14 }}>
+              <div style={{ marginTop: 6, color: '#fca5a5', fontSize: 15 }}>
                 Intent error: {intentLastErrorCode ?? 'none'}
               </div>
             </div>
-          ) : (
-            <div style={{ marginTop: 12, color: '#fbbf24', fontSize: 14 }}>
-              No intent model mapped for this exercise yet.
+
+            <div style={summaryCardStyle}>
+              <div style={smallLabelStyle}>Session Progress</div>
+              <div style={{ marginTop: 8, fontSize: 28, fontWeight: 800 }}>
+                Exercise {currentStepIndex + 1} of {session.steps.length}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 18, color: '#cbd5e1' }}>
+                Completed reps: <strong>{latestDebug?.repCount ?? 0}</strong> /{' '}
+                <strong>{currentStep.targetReps}</strong>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 16, color: '#93c5fd' }}>
+                Next: {nextExerciseLabel}
+              </div>
             </div>
-          )}
 
-          {latestDebug?.framingMessage ? (
-            <div style={{ marginTop: 10, color: '#93c5fd', fontSize: 15 }}>
-              Camera guidance: {latestDebug.framingMessage}
+            <div
+              style={{
+                ...summaryCardStyle,
+                borderColor: latestDebug?.framingStatus === 'good' ? '#14532d' : '#7c2d12',
+                background: latestDebug?.framingStatus === 'good' ? '#052e16' : '#3f1d0b'
+              }}
+            >
+              <div style={smallLabelStyle}>Camera Guidance</div>
+              <div style={{ marginTop: 8, fontSize: 24, fontWeight: 800 }}>
+                {latestDebug?.framingMessage ?? 'Step into the frame'}
+              </div>
             </div>
-          ) : null}
-        </section>
+          </section>
 
-        <div style={{ position: 'relative' }}>
-          <PoseTrackerPage
-            selectedExerciseId={currentStep.exerciseId}
-            sessionMode
-            targetReps={runnerPhase === 'active' ? currentStep.targetReps : undefined}
-            targetHoldSeconds={currentStep.targetHoldSeconds}
-            externalStatusText={
-              runnerPhase === 'session_intro'
-                ? readiness.ready
-                  ? 'Raise either hand and hold for 1 second to begin the session'
-                  : readiness.message
-                : runnerPhase === 'precheck'
-                  ? readiness.message
-                  : runnerPhase === 'countdown'
-                    ? `Starting in ${countdownValue}`
-                    : runnerPhase === 'active'
-                      ? activeInstructionText
-                      : runnerPhase === 'exercise_complete'
-                        ? 'Exercise completed successfully. Well done!'
-                        : runnerPhase === 'rest'
-                          ? `Rest: ${restSecondsLeft}s`
-                          : runnerPhase === 'session_complete'
-                            ? 'Session completed successfully. Great work today!'
-                            : undefined
-            }
-            exerciseEnabled={runnerPhase === 'active'}
-            onDebugStateChange={setLatestDebug}
-            onControlGesture={setGestureSignal}
-            onPoseLandmarksChange={handlePoseLandmarksChange}
-          />
-
-          <CenteredOverlay
-            visible={overlay.visible}
-            title={overlay.title}
-            subtitle={overlay.subtitle}
-          />
+          <section style={videoPanelStyle}>
+            <PoseTrackerPage
+              selectedExerciseId={currentStep.exerciseId}
+              sessionMode
+              targetReps={runnerPhase === 'active' ? currentStep.targetReps : undefined}
+              targetHoldSeconds={currentStep.targetHoldSeconds}
+              externalStatusText={
+                runnerPhase === 'session_intro'
+                  ? readiness.ready
+                    ? 'Raise either hand and hold for 1 second to begin the session'
+                    : readiness.message
+                  : runnerPhase === 'precheck'
+                    ? readiness.message
+                    : runnerPhase === 'countdown'
+                      ? `Starting in ${countdownValue}`
+                      : runnerPhase === 'active'
+                        ? activeInstructionText
+                        : runnerPhase === 'exercise_complete'
+                          ? 'Exercise completed successfully. Well done!'
+                          : runnerPhase === 'rest'
+                            ? `Rest: ${restSecondsLeft}s`
+                            : runnerPhase === 'session_complete'
+                              ? 'Session completed successfully. Great work today!'
+                              : undefined
+              }
+              exerciseEnabled={runnerPhase === 'active'}
+              onDebugStateChange={setLatestDebug}
+              onControlGesture={setGestureSignal}
+              onPoseLandmarksChange={handlePoseLandmarksChange}
+            />
+          </section>
         </div>
+
+        <div style={debugSectionStyle}>
+          <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>Debug Panel</div>
+          <div style={debugGridStyle}>
+            <Metric label="Tracking State" value={latestDebug?.tracking ?? 'idle'} />
+            <Metric label="Person Detected" value={latestDebug?.personDetected ? 'Yes' : 'No'} />
+            <Metric label="Track ID" value={latestDebug?.trackId ?? '—'} />
+            <Metric label="Visible Keypoints" value={latestDebug?.visibleKeypoints ?? 0} />
+            <Metric
+              label="Confidence"
+              value={`${(((latestDebug?.confidence ?? 0) as number) * 100).toFixed(0)}%`}
+            />
+            <Metric label="FPS" value={latestDebug?.fps ?? 0} />
+            <Metric label="Posture" value={latestDebug?.posture ?? 'unknown'} />
+            <Metric label="Avg Knee Angle" value={Math.round(latestDebug?.avgKneeAngle ?? 0)} />
+            <Metric label="Framing Status" value={latestDebug?.framingStatus ?? 'no_person'} />
+            <Metric label="Exercise" value={currentExercise.label} />
+            <Metric label="Exercise Phase" value={latestDebug?.exercisePhase ?? 'idle'} />
+            <Metric label="Rep Count" value={latestDebug?.repCount ?? 0} />
+            <Metric label="Hold (ms)" value={Math.round(latestDebug?.holdMs ?? 0)} />
+            <Metric
+              label="Current Lift"
+              value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)}
+            />
+            <Metric
+              label="Rep Peak Lift"
+              value={(latestDebug?.currentRepPeakLift ?? 0).toFixed(3)}
+            />
+            <Metric
+              label="Last Rep Peak"
+              value={
+                latestDebug?.lastRepPeakLift != null
+                  ? latestDebug.lastRepPeakLift.toFixed(3)
+                  : '—'
+              }
+            />
+            <Metric
+              label="Session Best Lift"
+              value={(latestDebug?.sessionPeakLift ?? 0).toFixed(3)}
+            />
+          </div>
+        </div>
+
+        <CenteredOverlay
+          visible={overlay.visible}
+          title={overlay.title}
+          subtitle={overlay.subtitle}
+        />
       </div>
     </main>
+  );
+}
+
+function HeaderMetric({
+  label,
+  value,
+  align = 'center'
+}: {
+  label: string;
+  value: string;
+  align?: 'left' | 'center';
+}) {
+  return (
+    <div style={{ textAlign: align, minWidth: 160 }}>
+      <div style={{ color: '#94a3b8', fontSize: 12 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800 }}>{value}</div>
+    </div>
   );
 }
 
@@ -554,31 +604,47 @@ function CenteredOverlay({
   return (
     <div
       style={{
-        position: 'absolute',
+        position: 'fixed',
         inset: 0,
         display: 'grid',
         placeItems: 'center',
         pointerEvents: 'none',
-        background: 'rgba(2, 6, 23, 0.45)',
-        borderRadius: 16
+        background: 'rgba(2, 6, 23, 0.30)',
+        zIndex: 50
       }}
     >
       <div
         style={{
-          background: 'rgba(15, 23, 42, 0.95)',
+          background: 'rgba(15, 23, 42, 0.96)',
           border: '2px solid #334155',
-          borderRadius: 20,
-          padding: '28px 34px',
+          borderRadius: 24,
+          padding: '30px 40px',
           maxWidth: 760,
           textAlign: 'center',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.35)'
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
         }}
       >
-        <div style={{ fontSize: 46, fontWeight: 900, lineHeight: 1.1 }}>{title}</div>
+        <div style={{ fontSize: 52, fontWeight: 900, lineHeight: 1.08 }}>{title}</div>
         <div style={{ marginTop: 14, fontSize: 24, color: '#dbeafe', lineHeight: 1.35 }}>
           {subtitle}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div
+      style={{
+        background: '#0b1225',
+        border: '1px solid #1f2942',
+        borderRadius: 12,
+        padding: '12px 14px'
+      }}
+    >
+      <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontWeight: 800, fontSize: 18 }}>{value}</div>
     </div>
   );
 }
@@ -601,3 +667,75 @@ function buttonStyle(bg: string): CSSProperties {
     cursor: 'pointer'
   };
 }
+
+const headerStyle: CSSProperties = {
+  background: '#0f172a',
+  border: '1px solid #1f2942',
+  borderRadius: 18,
+  padding: 18,
+  marginBottom: 20,
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 16,
+  flexWrap: 'wrap'
+};
+
+const heroGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(380px, 0.9fr) minmax(620px, 1.1fr)',
+  gap: 20,
+  alignItems: 'stretch'
+};
+
+const coachPanelStyle: CSSProperties = {
+  background: '#0f172a',
+  border: '1px solid #1f2942',
+  borderRadius: 20,
+  padding: 24,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16
+};
+
+const videoPanelStyle: CSSProperties = {
+  background: '#0f172a',
+  border: '1px solid #1f2942',
+  borderRadius: 20,
+  padding: 18
+};
+
+const instructionCardStyle: CSSProperties = {
+  background: '#081224',
+  border: '1px solid #1e3a5f',
+  borderRadius: 18,
+  padding: 18
+};
+
+const summaryCardStyle: CSSProperties = {
+  background: '#0b1225',
+  border: '1px solid #1f2942',
+  borderRadius: 18,
+  padding: 18
+};
+
+const smallLabelStyle: CSSProperties = {
+  color: '#93c5fd',
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: 0.3
+};
+
+const debugSectionStyle: CSSProperties = {
+  marginTop: 20,
+  background: '#0f172a',
+  border: '1px solid #1f2942',
+  borderRadius: 20,
+  padding: 20
+};
+
+const debugGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  gap: 12
+};
