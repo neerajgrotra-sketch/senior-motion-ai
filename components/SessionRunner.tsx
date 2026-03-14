@@ -37,6 +37,10 @@ function mapStepExerciseToIntent(exerciseId: string): ExerciseIntentModel | null
   }
 }
 
+function getExerciseSideLabel(currentExerciseLabel: string): 'left' | 'right' {
+  return currentExerciseLabel.toLowerCase().includes('left') ? 'left' : 'right';
+}
+
 function getCoachMessage(params: {
   phase: RunnerPhase;
   debug: DebugState | null;
@@ -55,6 +59,8 @@ function getCoachMessage(params: {
     targetReps,
     targetHoldSeconds
   } = params;
+
+  const side = getExerciseSideLabel(currentExerciseLabel);
 
   if (phase === 'session_intro') {
     return {
@@ -133,7 +139,6 @@ function getCoachMessage(params: {
   const holdMs = debug.holdMs ?? 0;
   const phaseName = debug.exercisePhase ?? 'idle';
   const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
-  const side = currentExerciseLabel.toLowerCase().includes('left') ? 'left' : 'right';
 
   if (phaseName === 'idle') {
     return {
@@ -214,13 +219,6 @@ function getCoachMessage(params: {
     error: null as string | null
   };
 }
-  return {
-    headline: 'Continue the movement.',
-    subline: `Reps ${completed}/${targetReps}`,
-    status: 'active',
-    error: null as string | null
-  };
-}
 
 export default function SessionRunner({ session, onComplete, onCancel }: Props) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -236,6 +234,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   const [elapsedMs, setElapsedMs] = useState(0);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [showExerciseIntroOverlay, setShowExerciseIntroOverlay] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   const currentStepStartPostureRef = useRef<'standing' | 'sitting' | 'unknown'>('unknown');
   const finalResultRef = useRef<SessionResult | null>(null);
@@ -261,6 +260,10 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   }, [currentStepIndex, session.steps.length]);
 
   const readiness = useMemo(() => {
+    if (!currentStep) {
+      return { ready: false, message: 'No active step.' };
+    }
+
     if (!latestDebug) {
       return { ready: false, message: 'Waiting for camera data...' };
     }
@@ -383,6 +386,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   }, [showExerciseIntroOverlay]);
 
   useEffect(() => {
+    if (!currentStep) return;
     if (runnerPhase !== 'active') return;
     if (!latestDebug) return;
     if (stepCompletionHandledRef.current) return;
@@ -395,9 +399,10 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
         lastRepPeakLift: latestDebug.lastRepPeakLift
       });
     }
-  }, [runnerPhase, latestDebug, currentStep.targetReps]);
+  }, [runnerPhase, latestDebug, currentStep]);
 
   useEffect(() => {
+    if (!currentStep) return;
     if (runnerPhase !== 'exercise_complete') return;
 
     const timer = window.setTimeout(() => {
@@ -410,7 +415,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     }, 2000);
 
     return () => window.clearTimeout(timer);
-  }, [runnerPhase, currentStep.restSeconds]);
+  }, [runnerPhase, currentStep]);
 
   useEffect(() => {
     if (runnerPhase !== 'rest') return;
@@ -543,9 +548,14 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
           <HeaderMetric label="Session" value={session.name} align="left" />
           <HeaderMetric label="Progress" value={progressText} />
           <HeaderMetric label="Elapsed Time" value={formatElapsed(elapsedMs)} />
-          <button onClick={onCancel} style={buttonStyle('#991b1b')}>
-            Cancel Session
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowDebugPanel((prev) => !prev)} style={secondaryButtonStyle}>
+              {showDebugPanel ? 'Hide Debug' : 'Show Debug'}
+            </button>
+            <button onClick={onCancel} style={buttonStyle('#991b1b')}>
+              Cancel Session
+            </button>
+          </div>
         </div>
 
         <div style={heroGridStyle}>
@@ -559,7 +569,8 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
             </div>
 
             <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16, lineHeight: 1.5 }}>
-              Exercise {currentStepIndex + 1} of {session.steps.length} • Reps {latestDebug?.repCount ?? 0}/{currentStep.targetReps}
+              Exercise {currentStepIndex + 1} of {session.steps.length} • Reps{' '}
+              {latestDebug?.repCount ?? 0}/{currentStep.targetReps}
             </div>
 
             <div style={coachMessageCardStyle}>
@@ -644,44 +655,46 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
           </section>
         </div>
 
-        <div style={debugSectionStyle}>
-          <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>Debug Panel</div>
-          <div style={debugGridStyle}>
-            <Metric label="Tracking State" value={latestDebug?.tracking ?? 'idle'} />
-            <Metric label="Person Detected" value={latestDebug?.personDetected ? 'Yes' : 'No'} />
-            <Metric label="Track ID" value={latestDebug?.trackId ?? '—'} />
-            <Metric label="Visible Keypoints" value={latestDebug?.visibleKeypoints ?? 0} />
-            <Metric
-              label="Confidence"
-              value={`${(((latestDebug?.confidence ?? 0) as number) * 100).toFixed(0)}%`}
-            />
-            <Metric label="FPS" value={latestDebug?.fps ?? 0} />
-            <Metric label="Posture" value={latestDebug?.posture ?? 'unknown'} />
-            <Metric label="Avg Knee Angle" value={Math.round(latestDebug?.avgKneeAngle ?? 0)} />
-            <Metric label="Framing Status" value={latestDebug?.framingStatus ?? 'no_person'} />
-            <Metric label="Exercise" value={currentExercise.label} />
-            <Metric label="Exercise Phase" value={latestDebug?.exercisePhase ?? 'idle'} />
-            <Metric label="Rep Count" value={latestDebug?.repCount ?? 0} />
-            <Metric label="Hold (ms)" value={Math.round(latestDebug?.holdMs ?? 0)} />
-            <Metric label="Current Lift" value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)} />
-            <Metric
-              label="Rep Peak Lift"
-              value={(latestDebug?.currentRepPeakLift ?? 0).toFixed(3)}
-            />
-            <Metric
-              label="Last Rep Peak"
-              value={
-                latestDebug?.lastRepPeakLift != null
-                  ? latestDebug.lastRepPeakLift.toFixed(3)
-                  : '—'
-              }
-            />
-            <Metric
-              label="Session Best Lift"
-              value={(latestDebug?.sessionPeakLift ?? 0).toFixed(3)}
-            />
+        {showDebugPanel ? (
+          <div style={debugSectionStyle}>
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>Debug Panel</div>
+            <div style={debugGridStyle}>
+              <Metric label="Tracking State" value={latestDebug?.tracking ?? 'idle'} />
+              <Metric label="Person Detected" value={latestDebug?.personDetected ? 'Yes' : 'No'} />
+              <Metric label="Track ID" value={latestDebug?.trackId ?? '—'} />
+              <Metric label="Visible Keypoints" value={latestDebug?.visibleKeypoints ?? 0} />
+              <Metric
+                label="Confidence"
+                value={`${(((latestDebug?.confidence ?? 0) as number) * 100).toFixed(0)}%`}
+              />
+              <Metric label="FPS" value={latestDebug?.fps ?? 0} />
+              <Metric label="Posture" value={latestDebug?.posture ?? 'unknown'} />
+              <Metric label="Avg Knee Angle" value={Math.round(latestDebug?.avgKneeAngle ?? 0)} />
+              <Metric label="Framing Status" value={latestDebug?.framingStatus ?? 'no_person'} />
+              <Metric label="Exercise" value={currentExercise.label} />
+              <Metric label="Exercise Phase" value={latestDebug?.exercisePhase ?? 'idle'} />
+              <Metric label="Rep Count" value={latestDebug?.repCount ?? 0} />
+              <Metric label="Hold (ms)" value={Math.round(latestDebug?.holdMs ?? 0)} />
+              <Metric label="Current Lift" value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)} />
+              <Metric
+                label="Rep Peak Lift"
+                value={(latestDebug?.currentRepPeakLift ?? 0).toFixed(3)}
+              />
+              <Metric
+                label="Last Rep Peak"
+                value={
+                  latestDebug?.lastRepPeakLift != null
+                    ? latestDebug.lastRepPeakLift.toFixed(3)
+                    : '—'
+                }
+              />
+              <Metric
+                label="Session Best Lift"
+                value={(latestDebug?.sessionPeakLift ?? 0).toFixed(3)}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <CenteredOverlay
           visible={overlay.visible}
@@ -870,6 +883,16 @@ function buttonStyle(bg: string): CSSProperties {
     cursor: 'pointer'
   };
 }
+
+const secondaryButtonStyle: CSSProperties = {
+  background: '#1e293b',
+  color: 'white',
+  border: '1px solid #334155',
+  borderRadius: 12,
+  padding: '12px 16px',
+  fontWeight: 700,
+  cursor: 'pointer'
+};
 
 const headerStyle: CSSProperties = {
   background: '#0f172a',
