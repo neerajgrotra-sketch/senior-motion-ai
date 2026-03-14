@@ -337,7 +337,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
   return (
     <main style={{ minHeight: '100vh', padding: 24, background: '#020817' }}>
-      <div style={{ maxWidth: 1500, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         <div style={headerStyle}>
           <HeaderMetric label="Session" value={session.name} align="left" />
           <HeaderMetric label="Progress" value={progressText} />
@@ -349,15 +349,9 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
         <div style={heroGridStyle}>
           <section style={coachPanelStyle}>
-            <div style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>
-              Current Step
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 42, fontWeight: 900, lineHeight: 1.05 }}>
-              {currentExercise.label}
-            </div>
-
-            <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 18, lineHeight: 1.5 }}>
+            <div style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700 }}>Current Step</div>
+            <div style={{ marginTop: 8, fontSize: 38, fontWeight: 900 }}>{currentExercise.label}</div>
+            <div style={{ marginTop: 12, color: '#cbd5e1', fontSize: 18, lineHeight: 1.5 }}>
               Target reps: <strong>{currentStep.targetReps}</strong> | Hold:{' '}
               <strong>{currentStep.targetHoldSeconds}s</strong> | Required posture:{' '}
               <strong>{currentStep.requiredPosture}</strong>
@@ -365,28 +359,28 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
             <div style={instructionCardStyle}>
               <div style={smallLabelStyle}>Intent-Aware Guidance</div>
-              <div style={{ marginTop: 8, fontSize: 34, fontWeight: 900, lineHeight: 1.12 }}>
+              <div style={{ marginTop: 8, fontSize: 30, fontWeight: 900, lineHeight: 1.12 }}>
                 {intentFeedbackMessage || currentIntentExercise?.coaching.intro || 'Get ready.'}
               </div>
-              <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16 }}>
+              <div style={{ marginTop: 12, color: '#cbd5e1', fontSize: 15 }}>
                 Intent state: <strong>{intentMotionState}</strong> | Intent reps:{' '}
                 <strong>{intentRepCount}</strong>
               </div>
-              <div style={{ marginTop: 6, color: '#fca5a5', fontSize: 15 }}>
+              <div style={{ marginTop: 4, color: '#fca5a5', fontSize: 14 }}>
                 Intent error: {intentLastErrorCode ?? 'none'}
               </div>
             </div>
 
             <div style={summaryCardStyle}>
               <div style={smallLabelStyle}>Session Progress</div>
-              <div style={{ marginTop: 8, fontSize: 28, fontWeight: 800 }}>
+              <div style={{ marginTop: 8, fontSize: 26, fontWeight: 800 }}>
                 Exercise {currentStepIndex + 1} of {session.steps.length}
               </div>
               <div style={{ marginTop: 8, fontSize: 18, color: '#cbd5e1' }}>
                 Completed reps: <strong>{latestDebug?.repCount ?? 0}</strong> /{' '}
                 <strong>{currentStep.targetReps}</strong>
               </div>
-              <div style={{ marginTop: 8, fontSize: 16, color: '#93c5fd' }}>
+              <div style={{ marginTop: 8, fontSize: 15, color: '#93c5fd' }}>
                 Next: {nextExerciseLabel}
               </div>
             </div>
@@ -457,10 +451,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
             <Metric label="Exercise Phase" value={latestDebug?.exercisePhase ?? 'idle'} />
             <Metric label="Rep Count" value={latestDebug?.repCount ?? 0} />
             <Metric label="Hold (ms)" value={Math.round(latestDebug?.holdMs ?? 0)} />
-            <Metric
-              label="Current Lift"
-              value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)}
-            />
+            <Metric label="Current Lift" value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)} />
             <Metric
               label="Rep Peak Lift"
               value={(latestDebug?.currentRepPeakLift ?? 0).toFixed(3)}
@@ -683,9 +674,9 @@ const headerStyle: CSSProperties = {
 
 const heroGridStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(380px, 0.9fr) minmax(620px, 1.1fr)',
+  gridTemplateColumns: 'minmax(360px, 0.9fr) minmax(640px, 1.1fr)',
   gap: 20,
-  alignItems: 'stretch'
+  alignItems: 'start'
 };
 
 const coachPanelStyle: CSSProperties = {
@@ -695,7 +686,8 @@ const coachPanelStyle: CSSProperties = {
   padding: 24,
   display: 'flex',
   flexDirection: 'column',
-  gap: 16
+  gap: 16,
+  minHeight: 640
 };
 
 const videoPanelStyle: CSSProperties = {
@@ -722,8 +714,7 @@ const summaryCardStyle: CSSProperties = {
 const smallLabelStyle: CSSProperties = {
   color: '#93c5fd',
   fontSize: 13,
-  fontWeight: 700,
-  letterSpacing: 0.3
+  fontWeight: 700
 };
 
 const debugSectionStyle: CSSProperties = {
