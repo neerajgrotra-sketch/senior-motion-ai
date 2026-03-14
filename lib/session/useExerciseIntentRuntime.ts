@@ -1,5 +1,5 @@
 'use client'
-import { extractIntentSignals } from '../pose/extractIntentSignals'
+
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ExerciseIntentModel,
@@ -38,16 +38,13 @@ export function useExerciseIntentRuntime(exercise: ExerciseIntentModel | null) {
       const deltaMs = Math.max(1, now - lastFrameTime)
       lastFrameTimeRef.current = now
 
-  const signals = extractIntentSignals(landmarks)
-
-const result = evaluateExerciseIntent({
-  exercise,
-  landmarks,
-  signals,
-  previousState: state,
-  nowMs: now,
-  deltaMs,
-})
+      const result = evaluateExerciseIntent({
+        exercise,
+        landmarks,
+        previousState: state,
+        nowMs: now,
+        deltaMs,
+      })
 
       setState(result.nextState)
       return result
