@@ -37,8 +37,48 @@ function mapStepExerciseToIntent(exerciseId: string): ExerciseIntentModel | null
   }
 }
 
-function getExerciseSideLabel(currentExerciseLabel: string): 'left' | 'right' {
-  return currentExerciseLabel.toLowerCase().includes('left') ? 'left' : 'right';
+function getExerciseInstructionCopy(currentExerciseLabel: string) {
+  const label = currentExerciseLabel.toLowerCase();
+
+  if (label.includes('both hands')) {
+    return {
+      action: 'Raise both hands slowly.',
+      continue: 'Good. Keep raising both hands.'
+    };
+  }
+
+  if (label.includes('left')) {
+    return {
+      action: 'Raise your left hand slowly.',
+      continue: 'Good. Keep raising your left hand.'
+    };
+  }
+
+  if (label.includes('right')) {
+    return {
+      action: 'Raise your right hand slowly.',
+      continue: 'Good. Keep raising your right hand.'
+    };
+  }
+
+  if (label.includes('knee')) {
+    return {
+      action: 'Lift your knee slowly.',
+      continue: 'Good. Keep lifting your knee.'
+    };
+  }
+
+  if (label.includes('sit to stand')) {
+    return {
+      action: 'Stand up slowly.',
+      continue: 'Good. Keep standing up.'
+    };
+  }
+
+  return {
+    action: 'Begin the movement slowly.',
+    continue: 'Good. Keep going.'
+  };
 }
 
 function getCoachMessage(params: {
@@ -60,7 +100,7 @@ function getCoachMessage(params: {
     targetHoldSeconds
   } = params;
 
-  const side = getExerciseSideLabel(currentExerciseLabel);
+  const instructionCopy = getExerciseInstructionCopy(currentExerciseLabel);
 
   if (phase === 'session_intro') {
     return {
@@ -142,7 +182,7 @@ function getCoachMessage(params: {
 
   if (phaseName === 'idle') {
     return {
-      headline: `Raise your ${side} hand slowly.`,
+      headline: instructionCopy.action,
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
       status: 'ready',
       error: null as string | null
@@ -160,7 +200,7 @@ function getCoachMessage(params: {
     }
 
     return {
-      headline: `Good. Keep raising your ${side} hand.`,
+      headline: instructionCopy.continue,
       subline: `Reps ${completed}/${targetReps}`,
       status: 'lifting',
       error: null as string | null
@@ -213,7 +253,7 @@ function getCoachMessage(params: {
   }
 
   return {
-    headline: `Raise your ${side} hand slowly.`,
+    headline: instructionCopy.action,
     subline: `Reps ${completed}/${targetReps}`,
     status: 'active',
     error: null as string | null
