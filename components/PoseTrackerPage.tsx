@@ -661,210 +661,120 @@ export default function PoseTrackerPage({
 
   return (
     <div>
-      <div>
+      {!sessionMode && (
         <div style={{ ...cardStyle, marginBottom: 18 }}>
-          {!sessionMode && (
-            <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Exercise</div>
-                <select
-                  value={selectedExerciseId}
-                  onChange={(e) => setLocalExerciseId(e.target.value)}
-                  style={selectStyle}
-                >
-                  {EXERCISE_OPTIONS.map((exercise) => (
-                    <option key={exercise.id} value={exercise.id}>
-                      {exercise.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Prompt</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
-              </div>
-            </div>
-          )}
-
-          {sessionMode && (
+          <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>
-                Current Exercise
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
-              {targetReps ? (
-                <div style={{ marginTop: 8, color: '#cbd5e1' }}>
-                  Target reps: {targetReps} | Completed reps: {debug.repCount}
-                </div>
-              ) : null}
+              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Exercise</div>
+              <select
+                value={selectedExerciseId}
+                onChange={(e) => setLocalExerciseId(e.target.value)}
+                style={selectStyle}
+              >
+                {EXERCISE_OPTIONS.map((exercise) => (
+                  <option key={exercise.id} value={exercise.id}>
+                    {exercise.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+
+            <div>
+              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Prompt</div>
+              <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
+            </div>
+          </div>
 
           <div style={{ marginTop: 8, color: '#cbd5e1' }}>
             {externalStatusText ?? debug.statusText}
           </div>
         </div>
+      )}
 
+      <div
+        style={{
+          position: 'relative',
+          background: '#050816',
+          borderRadius: 18,
+          overflow: 'hidden',
+          border: '1px solid #1f2942'
+        }}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            width: '100%',
+            height: 'auto',
+            display: 'none'
+          }}
+        />
+        <canvas
+          ref={canvasRef}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: 'auto'
+          }}
+        />
+
+        {!isRunning && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'grid',
+              placeItems: 'center',
+              color: '#94a3b8',
+              background: 'rgba(2,6,23,.45)'
+            }}
+          >
+            Camera is off
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
+        <button onClick={startCamera} style={buttonStyle('#2563eb')}>
+          Start Camera
+        </button>
+        <button onClick={stopCamera} style={buttonStyle('#334155')}>
+          Stop Camera
+        </button>
+        <button onClick={() => setShowSkeleton((v) => !v)} style={buttonStyle('#0f766e')}>
+          {showSkeleton ? 'Hide Skeleton' : 'Show Skeleton'}
+        </button>
+        <button onClick={() => setShowBox((v) => !v)} style={buttonStyle('#7c3aed')}>
+          {showBox ? 'Hide Box' : 'Show Box'}
+        </button>
+        <button onClick={() => setShowDots((v) => !v)} style={buttonStyle('#b45309')}>
+          {showDots ? 'Hide Keypoints' : 'Show Keypoints'}
+        </button>
+        <button
+          onClick={handleToggleAutoFraming}
+          style={buttonStyle(autoFramingEnabled ? '#15803d' : '#475569')}
+        >
+          {autoFramingEnabled ? 'Auto-Framing On' : 'Auto-Framing Off'}
+        </button>
+      </div>
+
+      {error && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 340px',
-            gap: 20,
-            alignItems: 'start'
+            marginTop: 14,
+            background: '#3f1119',
+            color: '#fecdd3',
+            padding: 12,
+            borderRadius: 12,
+            border: '1px solid #7f1d1d',
+            whiteSpace: 'pre-wrap'
           }}
         >
-          <section>
-            <div
-              style={{
-                ...cardStyle,
-                marginBottom: 14,
-                borderColor: debug.framingStatus === 'good' ? '#166534' : '#7c2d12',
-                background: debug.framingStatus === 'good' ? '#052e16' : '#3f1d0b'
-              }}
-            >
-              <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 4 }}>
-                Framing Guidance
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{debug.framingMessage}</div>
-            </div>
-
-            <div
-              style={{
-                position: 'relative',
-                background: '#050816',
-                borderRadius: 16,
-                overflow: 'hidden',
-                border: '1px solid #1f2942'
-              }}
-            >
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: '100%',
-                  height: 'auto',
-                  display: 'none'
-                }}
-              />
-              <canvas
-                ref={canvasRef}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  height: 'auto'
-                }}
-              />
-
-              {!isRunning && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: '#94a3b8',
-                    background: 'rgba(2,6,23,.45)'
-                  }}
-                >
-                  Camera is off
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 16 }}>
-              <button onClick={startCamera} style={buttonStyle('#2563eb')}>
-                Start Camera
-              </button>
-              <button onClick={stopCamera} style={buttonStyle('#334155')}>
-                Stop Camera
-              </button>
-              <button onClick={() => setShowSkeleton((v) => !v)} style={buttonStyle('#0f766e')}>
-                {showSkeleton ? 'Hide Skeleton' : 'Show Skeleton'}
-              </button>
-              <button onClick={() => setShowBox((v) => !v)} style={buttonStyle('#7c3aed')}>
-                {showBox ? 'Hide Box' : 'Show Box'}
-              </button>
-              <button onClick={() => setShowDots((v) => !v)} style={buttonStyle('#b45309')}>
-                {showDots ? 'Hide Keypoints' : 'Show Keypoints'}
-              </button>
-              <button
-                onClick={handleToggleAutoFraming}
-                style={buttonStyle(autoFramingEnabled ? '#15803d' : '#475569')}
-              >
-                {autoFramingEnabled ? 'Auto-Framing On' : 'Auto-Framing Off'}
-              </button>
-            </div>
-
-            {error && (
-              <div
-                style={{
-                  marginTop: 14,
-                  background: '#3f1119',
-                  color: '#fecdd3',
-                  padding: 12,
-                  borderRadius: 12,
-                  border: '1px solid #7f1d1d',
-                  whiteSpace: 'pre-wrap'
-                }}
-              >
-                {error}
-              </div>
-            )}
-          </section>
-
-          <aside style={{ ...cardStyle, padding: 18 }}>
-            <h2 style={{ marginTop: 0, fontSize: 20 }}>Debug Panel</h2>
-            <Metric label="Tracking State" value={debug.tracking} />
-            <Metric label="Person Detected" value={debug.personDetected ? 'Yes' : 'No'} />
-            <Metric label="Track ID" value={debug.trackId ?? '—'} />
-            <Metric label="Visible Keypoints" value={debug.visibleKeypoints} />
-            <Metric label="Confidence" value={`${(debug.confidence * 100).toFixed(0)}%`} />
-            <Metric label="FPS" value={debug.fps} />
-            <Metric label="Posture" value={debug.posture} />
-            <Metric label="Avg Knee Angle" value={Math.round(debug.avgKneeAngle)} />
-            <Metric label="Framing Status" value={debug.framingStatus} />
-            <Metric label="Framing Guidance" value={debug.framingMessage} />
-            <Metric label="Exercise" value={selectedExercise.label} />
-            <Metric label="Exercise Phase" value={debug.exercisePhase} />
-            <Metric label="Rep Count" value={debug.repCount} />
-            <Metric label="Hold (ms)" value={Math.round(debug.holdMs)} />
-            <Metric label="Current Lift" value={debug.currentLiftNorm.toFixed(3)} />
-            <Metric label="Rep Peak Lift" value={debug.currentRepPeakLift.toFixed(3)} />
-            <Metric
-              label="Last Rep Peak"
-              value={debug.lastRepPeakLift !== null ? debug.lastRepPeakLift.toFixed(3) : '—'}
-            />
-            <Metric label="Session Best Lift" value={debug.sessionPeakLift.toFixed(3)} />
-            <Metric label="Auto-Framing" value={autoFramingEnabled ? 'On' : 'Off'} />
-
-            <div style={{ marginTop: 18, color: '#b6c2df', fontSize: 14, lineHeight: 1.6 }}>
-              {sessionMode
-                ? 'Session mode is active.'
-                : 'Standalone exercise mode. Auto-framing keeps the person centered.'}
-            </div>
-          </aside>
+          {error}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: 12,
-        padding: '10px 0',
-        borderBottom: '1px solid #1f2942'
-      }}
-    >
-      <span style={{ color: '#94a3b8' }}>{label}</span>
-      <strong>{value}</strong>
+      )}
     </div>
   );
 }
@@ -874,8 +784,8 @@ function buttonStyle(bg: string): CSSProperties {
     background: bg,
     color: 'white',
     border: 'none',
-    borderRadius: 12,
-    padding: '12px 16px',
+    borderRadius: 10,
+    padding: '10px 14px',
     fontWeight: 700,
     cursor: 'pointer'
   };
