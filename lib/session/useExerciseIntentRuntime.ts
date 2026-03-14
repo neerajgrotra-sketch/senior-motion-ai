@@ -52,16 +52,36 @@ export function useExerciseIntentRuntime(exercise: ExerciseIntentModel | null) {
     [exercise, state],
   )
 
+  const primaryLiftSignalId = exercise?.signalRefs.primaryLiftSignalId
+  const oppositeLiftSignalId = exercise?.signalRefs.oppositeLiftSignalId
+  const trunkLeanSignalId = exercise?.signalRefs.trunkLeanSignalId
+
   const derived = useMemo(() => {
+    const latestSignals = state?.latestSignals ?? {}
+
     return {
       repCount: state?.repCount ?? 0,
       motionState: state?.motionState ?? 'ready',
       feedbackMessage: state?.feedbackMessage ?? exercise?.coaching.intro ?? '',
       lastErrorCode: state?.lastErrorCode,
       completed: state?.completed ?? false,
-      latestSignals: state?.latestSignals ?? {},
+      latestSignals,
+      debugSignals: {
+        primary:
+          primaryLiftSignalId && latestSignals[primaryLiftSignalId] != null
+            ? latestSignals[primaryLiftSignalId]
+            : null,
+        opposite:
+          oppositeLiftSignalId && latestSignals[oppositeLiftSignalId] != null
+            ? latestSignals[oppositeLiftSignalId]
+            : null,
+        trunkLean:
+          trunkLeanSignalId && latestSignals[trunkLeanSignalId] != null
+            ? latestSignals[trunkLeanSignalId]
+            : null,
+      },
     }
-  }, [exercise, state])
+  }, [exercise, state, primaryLiftSignalId, oppositeLiftSignalId, trunkLeanSignalId])
 
   return {
     state,
