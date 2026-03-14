@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ExerciseIntentModel,
   LiveIntentState,
@@ -13,25 +13,37 @@ import {
 
 export function useExerciseIntentRuntime(exercise: ExerciseIntentModel | null) {
   const [state, setState] = useState<LiveIntentState | null>(null)
+  const stateRef = useRef<LiveIntentState | null>(null)
   const lastFrameTimeRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   const start = useCallback(() => {
     if (!exercise) return
     const now = performance.now()
+    const initialState = createInitialIntentState(exercise, now)
     lastFrameTimeRef.current = now
-    setState(createInitialIntentState(exercise, now))
+    stateRef.current = initialState
+    setState(initialState)
   }, [exercise])
 
   const reset = useCallback(() => {
     if (!exercise) return
     const now = performance.now()
+    const initialState = createInitialIntentState(exercise, now)
     lastFrameTimeRef.current = now
-    setState(createInitialIntentState(exercise, now))
+    stateRef.current = initialState
+    setState(initialState)
   }, [exercise])
 
   const processLandmarks = useCallback(
     (landmarks: PoseLandmarks) => {
-      if (!exercise || !state) return
+      if (!exercise) return
+
+      const currentState = stateRef.current
+      if (!currentState) return
 
       const now = performance.now()
       const lastFrameTime = lastFrameTimeRef.current ?? now
@@ -41,15 +53,16 @@ export function useExerciseIntentRuntime(exercise: ExerciseIntentModel | null) {
       const result = evaluateExerciseIntent({
         exercise,
         landmarks,
-        previousState: state,
+        previousState: currentState,
         nowMs: now,
         deltaMs,
       })
 
+      stateRef.current = result.nextState
       setState(result.nextState)
       return result
     },
-    [exercise, state],
+    [exercise],
   )
 
   const primaryLiftSignalId = exercise?.signalRefs.primaryLiftSignalId
