@@ -37,6 +37,192 @@ function mapStepExerciseToIntent(exerciseId: string): ExerciseIntentModel | null
   }
 }
 
+function getCoachMessage(params: {
+  phase: RunnerPhase;
+  debug: DebugState | null;
+  currentExerciseLabel: string;
+  currentStepIndex: number;
+  totalSteps: number;
+  targetReps: number;
+  targetHoldSeconds?: number;
+}) {
+  const {
+    phase,
+    debug,
+    currentExerciseLabel,
+    currentStepIndex,
+    totalSteps,
+    targetReps,
+    targetHoldSeconds
+  } = params;
+
+  if (phase === 'session_intro') {
+    return {
+      headline: 'Raise either hand to begin.',
+      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Target ${targetReps} reps`,
+      status: 'waiting',
+      error: null as string | null
+    };
+  }
+
+  if (phase === 'precheck') {
+    return {
+      headline: 'Get into position.',
+      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • ${currentExerciseLabel}`,
+      status: 'precheck',
+      error: null as string | null
+    };
+  }
+
+  if (phase === 'countdown') {
+    return {
+      headline: 'Get ready.',
+      subline: `Starting ${currentExerciseLabel}`,
+      status: 'countdown',
+      error: null as string | null
+    };
+  }
+
+  if (phase === 'rest') {
+    return {
+      headline: 'Take a short rest.',
+      subline: `Recover before the next step`,
+      status: 'rest',
+      error: null as string | null
+    };
+  }
+
+  if (phase === 'exercise_complete') {
+    return {
+      headline: 'Great job.',
+      subline: 'Exercise completed successfully.',
+      status: 'complete',
+      error: null as string | null
+    };
+  }
+
+  if (phase === 'session_complete') {
+    return {
+      headline: 'Session complete.',
+      subline: 'Excellent work today.',
+      status: 'complete',
+      error: null as string | null
+    };
+  }
+
+  if (!debug) {
+    return {
+      headline: 'Waiting for camera data.',
+      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps}`,
+      status: 'waiting',
+      error: null as string | null
+    };
+  }
+
+  if (!debug.personDetected || debug.tracking !== 'active') {
+    return {
+      headline: 'Step into the frame.',
+      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps}`,
+      status: 'tracking',
+      error: 'no_person'
+    };
+  }
+
+  if (debug.framingStatus !== 'good') {
+    return {
+      headline: debug.framingMessage || 'Adjust your position.',
+      subline: `We need a better camera view before coaching movement`,
+      status: 'framing',
+      error: debug.framingStatus
+    };
+  }
+
+  const completed = debug.repCount ?? 0;
+  const lift = debug.currentLiftNorm ?? 0;
+  const holdMs = debug.holdMs ?? 0;
+  const phaseName = debug.exercisePhase ?? 'idle';
+  const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
+
+  if (phaseName === 'idle') {
+    return {
+      headline: `Raise your ${currentExerciseLabel.toLowerCase().includes('left') ? 'left' : 'right'} hand slowly.`,
+      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
+      status: 'ready',
+      error: null as string | null
+    };
+  }
+
+  if (phaseName === 'moving_up') {
+    if (lift < 0.18) {
+      return {
+        headline: 'Lift a little higher.',
+        subline: `Reps ${completed}/${targetReps}`,
+        status: 'lifting',
+        error: 'insufficient_range'
+      };
+    }
+
+    return {
+      headline: 'Good. Keep lifting.',
+      subline: `Reps ${completed}/${targetReps}`,
+      status: 'lifting',
+      error: null as string | null
+    };
+  }
+
+  if (phaseName === 'holding') {
+    if (holdTargetMs > 0 && holdMs < holdTargetMs) {
+      return {
+        headline: 'Hold.',
+        subline: `${Math.ceil((holdTargetMs - holdMs) / 1000)}s remaining`,
+        status: 'holding',
+        error: null as string | null
+      };
+    }
+
+    return {
+      headline: 'Great. Now lower slowly.',
+      subline: `Reps ${completed}/${targetReps}`,
+      status: 'holding',
+      error: null as string | null
+    };
+  }
+
+  if (phaseName === 'moving_down') {
+    return {
+      headline: 'Lower slowly.',
+      subline: `Reps ${completed}/${targetReps}`,
+      status: 'lowering',
+      error: null as string | null
+    };
+  }
+
+  if (phaseName === 'rep_complete') {
+    return {
+      headline: 'Great job. That is one rep.',
+      subline: `Reps ${completed}/${targetReps}`,
+      status: 'rep_complete',
+      error: null as string | null
+    };
+  }
+
+  if (phaseName === 'lost') {
+    return {
+      headline: 'Step back into the frame.',
+      subline: 'We lost tracking for a moment',
+      status: 'tracking',
+      error: 'lost'
+    };
+  }
+
+  return {
+    headline: 'Continue the movement.',
+    subline: `Reps ${completed}/${targetReps}`,
+    status: 'active',
+    error: null as string | null
+  };
+}
+
 export default function SessionRunner({ session, onComplete, onCancel }: Props) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [runnerPhase, setRunnerPhase] = useState<RunnerPhase>('session_intro');
@@ -68,12 +254,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   const {
     start: startIntentRuntime,
     reset: resetIntentRuntime,
-    processLandmarks,
-    motionState: intentMotionState,
-    feedbackMessage: intentFeedbackMessage,
-    lastErrorCode: intentLastErrorCode,
-    repCount: intentRepCount,
-    debugSignals
+    processLandmarks
   } = useExerciseIntentRuntime(currentIntentExercise);
 
   const progressText = useMemo(() => {
@@ -104,6 +285,27 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
     return { ready: true, message: 'Ready to begin' };
   }, [latestDebug, currentStep]);
+
+  const coach = useMemo(() => {
+    if (!currentExercise || !currentStep) {
+      return {
+        headline: 'Get ready.',
+        subline: '',
+        status: 'idle',
+        error: null as string | null
+      };
+    }
+
+    return getCoachMessage({
+      phase: runnerPhase,
+      debug: latestDebug,
+      currentExerciseLabel: currentExercise.label,
+      currentStepIndex,
+      totalSteps: session.steps.length,
+      targetReps: currentStep.targetReps,
+      targetHoldSeconds: currentStep.targetHoldSeconds
+    });
+  }, [runnerPhase, latestDebug, currentExercise, currentStep, currentStepIndex, session.steps.length]);
 
   useEffect(() => {
     if (!sessionStartedAt) return;
@@ -240,7 +442,6 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   function handlePoseLandmarksChange(landmarks: PoseLandmarks) {
     if (runnerPhase !== 'active') return;
     if (!currentIntentExercise) return;
-
     processLandmarks(landmarks);
   }
 
@@ -331,13 +532,6 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     targetReps: currentStep.targetReps
   });
 
-  const coachMessage =
-    intentFeedbackMessage || currentIntentExercise?.coaching.intro || 'Get ready.';
-  const coachSupportText =
-    runnerPhase === 'active'
-      ? `Exercise ${currentStepIndex + 1} of ${session.steps.length} • Reps ${latestDebug?.repCount ?? 0}/${currentStep.targetReps}`
-      : `Exercise ${currentStepIndex + 1} of ${session.steps.length} • Target reps ${currentStep.targetReps}`;
-
   const activeInstructionText =
     runnerPhase === 'active'
       ? `Exercise ${currentStepIndex + 1} of ${session.steps.length}: ${currentExercise.label} | Target reps: ${currentStep.targetReps} | Completed: ${latestDebug?.repCount ?? 0}`
@@ -366,78 +560,32 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
             </div>
 
             <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16, lineHeight: 1.5 }}>
-              {coachSupportText}
+              Exercise {currentStepIndex + 1} of {session.steps.length} • Reps {latestDebug?.repCount ?? 0}/{currentStep.targetReps}
             </div>
 
             <div style={coachMessageCardStyle}>
               <div style={coachMessageLabelStyle}>Live Guidance</div>
               <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, lineHeight: 1.14 }}>
-                {coachMessage}
+                {coach.headline}
+              </div>
+
+              <div style={{ marginTop: 12, color: '#cbd5e1', fontSize: 15 }}>
+                {coach.subline}
               </div>
 
               <div style={{ marginTop: 18, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
                 <div style={coachMetaChipStyle}>
-                  State: <strong>{intentMotionState}</strong>
+                  State: <strong>{latestDebug?.exercisePhase ?? 'idle'}</strong>
                 </div>
                 <div style={coachMetaChipStyle}>
-                  Intent reps: <strong>{intentRepCount}</strong>
+                  Reps: <strong>{latestDebug?.repCount ?? 0}</strong>
                 </div>
                 <div style={coachMetaChipStyle}>
-                  Error: <strong>{intentLastErrorCode ?? 'none'}</strong>
+                  Lift: <strong>{(latestDebug?.currentLiftNorm ?? 0).toFixed(3)}</strong>
                 </div>
               </div>
             </div>
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: '12px 14px',
-                  background: '#07101f',
-                  border: '1px solid #1f2942',
-                  borderRadius: 12,
-                  fontSize: 13,
-                  color: '#cbd5e1',
-                  lineHeight: 1.6
-                }}
-              >
-                <div style={{ color: '#93c5fd', fontWeight: 700, marginBottom: 6 }}>
-                  Intent Diagnostics
-                </div>
-                <div>
-                  Primary signal:{' '}
-                  <strong>
-                    {debugSignals.primary != null ? debugSignals.primary.toFixed(3) : 'null'}
-                  </strong>
-                </div>
-                <div>
-                  Opposite signal:{' '}
-                  <strong>
-                    {debugSignals.opposite != null ? debugSignals.opposite.toFixed(3) : 'null'}
-                  </strong>
-                </div>
-                <div>
-                  Trunk lean:{' '}
-                  <strong>
-                    {debugSignals.trunkLean != null ? debugSignals.trunkLean.toFixed(1) : 'null'}
-                  </strong>
-                </div>
-                <div>
-                  Target threshold:{' '}
-                  <strong>
-                    {currentIntentExercise?.thresholds.targetMin != null
-                      ? currentIntentExercise.thresholds.targetMin.toFixed(3)
-                      : 'n/a'}
-                  </strong>
-                </div>
-                <div>
-                  Start threshold:{' '}
-                  <strong>
-                    {currentIntentExercise?.thresholds.startMax != null
-                      ? currentIntentExercise.thresholds.startMax.toFixed(3)
-                      : 'n/a'}
-                  </strong>
-                </div>
-              </div>
-            
+
             <div style={coachFooterStyle}>
               <div style={{ color: '#94a3b8', fontSize: 13 }}>Session Progress</div>
               <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800 }}>
