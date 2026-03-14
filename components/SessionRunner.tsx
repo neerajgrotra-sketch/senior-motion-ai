@@ -330,6 +330,13 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     targetReps: currentStep.targetReps
   });
 
+  const coachMessage =
+    intentFeedbackMessage || currentIntentExercise?.coaching.intro || 'Get ready.';
+  const coachSupportText =
+    runnerPhase === 'active'
+      ? `Exercise ${currentStepIndex + 1} of ${session.steps.length} • Reps ${latestDebug?.repCount ?? 0}/${currentStep.targetReps}`
+      : `Exercise ${currentStepIndex + 1} of ${session.steps.length} • Target reps ${currentStep.targetReps}`;
+
   const activeInstructionText =
     runnerPhase === 'active'
       ? `Exercise ${currentStepIndex + 1} of ${session.steps.length}: ${currentExercise.label} | Target reps: ${currentStep.targetReps} | Completed: ${latestDebug?.repCount ?? 0}`
@@ -337,7 +344,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
   return (
     <main style={{ minHeight: '100vh', padding: 24, background: '#020817' }}>
-      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1440, margin: '0 auto' }}>
         <div style={headerStyle}>
           <HeaderMetric label="Session" value={session.name} align="left" />
           <HeaderMetric label="Progress" value={progressText} />
@@ -349,57 +356,64 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
         <div style={heroGridStyle}>
           <section style={coachPanelStyle}>
-            <div style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700 }}>Current Step</div>
-            <div style={{ marginTop: 8, fontSize: 38, fontWeight: 900 }}>{currentExercise.label}</div>
-            <div style={{ marginTop: 12, color: '#cbd5e1', fontSize: 18, lineHeight: 1.5 }}>
-              Target reps: <strong>{currentStep.targetReps}</strong> | Hold:{' '}
-              <strong>{currentStep.targetHoldSeconds}s</strong> | Required posture:{' '}
-              <strong>{currentStep.requiredPosture}</strong>
+            <div style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>
+              Coach
             </div>
 
-            <div style={instructionCardStyle}>
-              <div style={smallLabelStyle}>Intent-Aware Guidance</div>
-              <div style={{ marginTop: 8, fontSize: 30, fontWeight: 900, lineHeight: 1.12 }}>
-                {intentFeedbackMessage || currentIntentExercise?.coaching.intro || 'Get ready.'}
+            <div style={{ marginTop: 10, fontSize: 40, fontWeight: 900, lineHeight: 1.04 }}>
+              {currentExercise.label}
+            </div>
+
+            <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16, lineHeight: 1.5 }}>
+              {coachSupportText}
+            </div>
+
+            <div style={coachMessageCardStyle}>
+              <div style={coachMessageLabelStyle}>Live Guidance</div>
+              <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, lineHeight: 1.14 }}>
+                {coachMessage}
               </div>
-              <div style={{ marginTop: 12, color: '#cbd5e1', fontSize: 15 }}>
-                Intent state: <strong>{intentMotionState}</strong> | Intent reps:{' '}
-                <strong>{intentRepCount}</strong>
-              </div>
-              <div style={{ marginTop: 4, color: '#fca5a5', fontSize: 14 }}>
-                Intent error: {intentLastErrorCode ?? 'none'}
+
+              <div style={{ marginTop: 18, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                <div style={coachMetaChipStyle}>
+                  State: <strong>{intentMotionState}</strong>
+                </div>
+                <div style={coachMetaChipStyle}>
+                  Intent reps: <strong>{intentRepCount}</strong>
+                </div>
+                <div style={coachMetaChipStyle}>
+                  Error: <strong>{intentLastErrorCode ?? 'none'}</strong>
+                </div>
               </div>
             </div>
 
-            <div style={summaryCardStyle}>
-              <div style={smallLabelStyle}>Session Progress</div>
-              <div style={{ marginTop: 8, fontSize: 26, fontWeight: 800 }}>
-                Exercise {currentStepIndex + 1} of {session.steps.length}
+            <div style={coachFooterStyle}>
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>Session Progress</div>
+              <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800 }}>
+                {latestDebug?.repCount ?? 0} / {currentStep.targetReps} reps completed
               </div>
-              <div style={{ marginTop: 8, fontSize: 18, color: '#cbd5e1' }}>
-                Completed reps: <strong>{latestDebug?.repCount ?? 0}</strong> /{' '}
-                <strong>{currentStep.targetReps}</strong>
-              </div>
-              <div style={{ marginTop: 8, fontSize: 15, color: '#93c5fd' }}>
+              <div style={{ marginTop: 8, color: '#93c5fd', fontSize: 15 }}>
                 Next: {nextExerciseLabel}
-              </div>
-            </div>
-
-            <div
-              style={{
-                ...summaryCardStyle,
-                borderColor: latestDebug?.framingStatus === 'good' ? '#14532d' : '#7c2d12',
-                background: latestDebug?.framingStatus === 'good' ? '#052e16' : '#3f1d0b'
-              }}
-            >
-              <div style={smallLabelStyle}>Camera Guidance</div>
-              <div style={{ marginTop: 8, fontSize: 24, fontWeight: 800 }}>
-                {latestDebug?.framingMessage ?? 'Step into the frame'}
               </div>
             </div>
           </section>
 
           <section style={videoPanelStyle}>
+            <div
+              style={{
+                ...cameraBannerStyle,
+                borderColor: latestDebug?.framingStatus === 'good' ? '#14532d' : '#7c2d12',
+                background: latestDebug?.framingStatus === 'good' ? '#052e16' : '#3f1d0b'
+              }}
+            >
+              <span style={{ color: '#cbd5e1', fontSize: 12, fontWeight: 700, letterSpacing: 0.3 }}>
+                CAMERA GUIDANCE
+              </span>
+              <span style={{ marginLeft: 10, fontSize: 16, fontWeight: 800 }}>
+                {latestDebug?.framingMessage ?? 'Step into the frame'}
+              </span>
+            </div>
+
             <PoseTrackerPage
               selectedExerciseId={currentStep.exerciseId}
               sessionMode
@@ -674,7 +688,7 @@ const headerStyle: CSSProperties = {
 
 const heroGridStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(360px, 0.9fr) minmax(640px, 1.1fr)',
+  gridTemplateColumns: 'minmax(360px, 0.88fr) minmax(700px, 1.12fr)',
   gap: 20,
   alignItems: 'start'
 };
@@ -686,7 +700,7 @@ const coachPanelStyle: CSSProperties = {
   padding: 24,
   display: 'flex',
   flexDirection: 'column',
-  gap: 16,
+  gap: 18,
   minHeight: 640
 };
 
@@ -697,24 +711,42 @@ const videoPanelStyle: CSSProperties = {
   padding: 18
 };
 
-const instructionCardStyle: CSSProperties = {
+const coachMessageCardStyle: CSSProperties = {
   background: '#081224',
   border: '1px solid #1e3a5f',
   borderRadius: 18,
-  padding: 18
+  padding: 20
 };
 
-const summaryCardStyle: CSSProperties = {
+const coachMessageLabelStyle: CSSProperties = {
+  color: '#93c5fd',
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: 0.3
+};
+
+const coachMetaChipStyle: CSSProperties = {
+  background: '#0b1225',
+  border: '1px solid #1f2942',
+  borderRadius: 999,
+  padding: '8px 12px',
+  fontSize: 14,
+  color: '#cbd5e1'
+};
+
+const coachFooterStyle: CSSProperties = {
+  marginTop: 'auto',
   background: '#0b1225',
   border: '1px solid #1f2942',
   borderRadius: 18,
   padding: 18
 };
 
-const smallLabelStyle: CSSProperties = {
-  color: '#93c5fd',
-  fontSize: 13,
-  fontWeight: 700
+const cameraBannerStyle: CSSProperties = {
+  border: '1px solid',
+  borderRadius: 12,
+  padding: '10px 14px',
+  marginBottom: 14
 };
 
 const debugSectionStyle: CSSProperties = {
