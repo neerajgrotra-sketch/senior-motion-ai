@@ -1,12 +1,13 @@
 import { PoseLandmarks } from '../exercises/exerciseIntentTypes'
 
 export function extractIntentSignals(landmarks: PoseLandmarks) {
-  const rs = landmarks.rightShoulder
-  const rw = landmarks.rightWrist
-  const ls = landmarks.leftShoulder
-  const lw = landmarks.leftWrist
+  const rs = landmarks.right_shoulder
+  const rw = landmarks.right_wrist
+  const ls = landmarks.left_shoulder
+  const lw = landmarks.left_wrist
   const nose = landmarks.nose
-  const midHip = landmarks.midHip
+  const lh = landmarks.left_hip
+  const rh = landmarks.right_hip
 
   let rightArmLift: number | null = null
   let leftArmLift: number | null = null
@@ -20,13 +21,14 @@ export function extractIntentSignals(landmarks: PoseLandmarks) {
     leftArmLift = ls.y - lw.y
   }
 
-  if (nose && midHip) {
-    trunkLean = Math.abs(nose.x - midHip.x)
+  if (nose && lh && rh) {
+    const midHipX = (lh.x + rh.x) / 2
+    trunkLean = Math.abs(nose.x - midHipX)
   }
 
   return {
     right_arm_lift: rightArmLift,
     left_arm_lift: leftArmLift,
-    trunk_lean: trunkLean
+    trunk_lean: trunkLean,
   }
 }
