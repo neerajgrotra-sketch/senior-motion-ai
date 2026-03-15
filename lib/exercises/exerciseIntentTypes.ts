@@ -64,6 +64,7 @@ export type IntentErrorCode =
   | "threshold_not_met"
   | "invalid_model"
   | "trunk_lean"
+  | "wrong_side"
   | "unknown";
 
 /* ------------------------------------------------ */
@@ -116,10 +117,11 @@ export type LiveIntentState = {
 /* ------------------------------------------------ */
 
 export type LegacyExerciseThresholds = {
-  startMax?: number;
-  targetMin?: number;
-  holdDurationMs?: number;
-  minRepDurationMs?: number;
+  startMax: number;
+  targetMin: number;
+  holdDurationMs: number;
+  minRepDurationMs: number;
+
   maxRepDurationMs?: number;
   returnMax?: number;
   minConfidence?: number;
@@ -173,6 +175,7 @@ export type ExerciseIntentModel = {
     detectTrunkLean?: boolean;
     detectAsymmetry?: boolean;
     detectLowConfidence?: boolean;
+    detectWrongSide?: boolean;
     [key: string]: boolean | undefined;
   };
 
@@ -188,6 +191,7 @@ export type ExerciseIntentModel = {
     trunkLean?: string;
     lowConfidence?: string;
     asymmetry?: string;
+    wrongSide?: string;
     reset?: string;
     [key: string]: string | undefined;
   };
@@ -198,13 +202,11 @@ export type ExerciseIntentModel = {
 /* ------------------------------------------------ */
 
 export type IntentEvaluationResult = {
-  // legacy evaluator return shape
   nextState?: LiveIntentState;
   repCompleted?: boolean;
   detectedErrorCode?: IntentErrorCode;
   feedbackMessage?: string;
 
-  // alternate/common shape
   ok?: boolean;
   errorCode?: IntentErrorCode;
   state?: LiveIntentState;
