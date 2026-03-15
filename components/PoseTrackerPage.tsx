@@ -35,7 +35,10 @@ import {
   type RuntimeAssessment,
   type RuntimeState
 } from '../lib/biomechanics/types';
-import { RAISE_RIGHT_HAND_DEFINITION } from '../lib/biomechanics/exerciseDefinitions';
+import {
+  RAISE_RIGHT_HAND_DEFINITION,
+  RAISE_LEFT_HAND_DEFINITION
+} from '../lib/biomechanics/exerciseDefinitions';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
@@ -74,10 +77,14 @@ type RuntimeStats = {
   lastRepPeakLift: number | null;
 };
 
-function getDefinitionForExerciseId(_exerciseId?: string): ExerciseDefinition {
-  // Temporary during migration to the new biomechanics engine.
-  // Extend this when you add more biomechanics-backed exercise definitions.
-  return RAISE_RIGHT_HAND_DEFINITION;
+function getDefinitionForExerciseId(exerciseId?: string): ExerciseDefinition {
+  switch (exerciseId) {
+    case 'raise_left_hand':
+      return RAISE_LEFT_HAND_DEFINITION;
+    case 'raise_right_hand':
+    default:
+      return RAISE_RIGHT_HAND_DEFINITION;
+  }
 }
 
 function getInitialDebugState(exerciseId: string): DebugState {
@@ -271,7 +278,7 @@ export default function PoseTrackerPage({
     if (debug.repCount >= targetReps) {
       completedCalledRef.current = true;
       onExerciseCompleteRef.current?.({
-        completedReps: debug.repCount,
+        completedReps: targetReps,
         sessionPeakLift: debug.sessionPeakLift,
         lastRepPeakLift: debug.lastRepPeakLift
       });
@@ -602,7 +609,12 @@ export default function PoseTrackerPage({
             statusText: externalStatusTextRef.current
               ? externalStatusTextRef.current
               : assessment.primaryCue ?? exerciseDefinition.cues.ready,
-            currentLiftNorm: assessment.currentLift,
+            currentLiftNorm:
+              exerciseDefinition.side === 'left'
+                ? signals.leftHandLiftNorm
+                : exerciseDefinition.side === 'right'
+                  ? signals.rightHandLiftNorm
+                  : assessment.currentLift,
             currentRepPeakLift: runtimeStatsRef.current.currentRepPeakLift,
             lastRepPeakLift: runtimeStatsRef.current.lastRepPeakLift,
             sessionPeakLift: runtimeStatsRef.current.sessionPeakLift,
@@ -883,4 +895,4 @@ const cardStyle: CSSProperties = {
   border: '1px solid #1f2942',
   borderRadius: 16,
   padding: 16
-};      
+};
