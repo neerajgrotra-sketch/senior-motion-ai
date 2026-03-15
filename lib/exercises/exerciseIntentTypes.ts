@@ -88,6 +88,11 @@ export type LiveIntentState = {
   lastRepCompletedAtMs?: number | undefined;
   lastRepTimestampMs?: number | null;
 
+  feedbackMessage?: string;
+  latestSignals?: IntentSignalMap;
+  lastErrorCode?: IntentErrorCode | undefined;
+  completed?: boolean;
+
   confidence?: number;
   activeSide?: "left" | "right" | "bilateral" | null;
   matchedRules?: string[];
