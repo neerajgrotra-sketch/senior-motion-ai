@@ -48,8 +48,16 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
     latestBiomechanicsFrame,
   } = usePosePipeline();
 
-  const demoSession = useMemo(() => buildDemoSession(), []);
-  const engineRef = useRef(createSessionRunnerEngine());
+import { convertBuilderSession } from "../lib/session/convertBuilderSession";
+
+const runtimeSession = useMemo(() => {
+  if (session) {
+    return convertBuilderSession(session);
+  }
+  return buildDemoSession();
+}, [session]);
+
+engineRef.current.loadSession(runtimeSession);
 
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sessionState, setSessionState] = useState<SessionRunnerState>(
