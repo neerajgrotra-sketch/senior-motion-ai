@@ -4,14 +4,15 @@
  * SessionRunner.tsx
  *
  * Purpose
- * - Render the MVP exercise session screen
- * - Keep camera / pose pipeline separate from session orchestration
- * - Feed latest BiomechanicsFrame values into the session runner engine
- * - Show current exercise, rep progress, coaching, and debug info
+ * - Render the MVP exercise runner screen
+ * - Use the new pose -> biomechanics -> runtime -> session engine path
+ * - Accept page-level props so the app shell can route Builder -> Runner -> Results
  *
- * Notes
- * - This version uses inline styles instead of Tailwind so it renders
- *   consistently even if Tailwind is not configured in the repo.
+ * Important note
+ * - `session` is accepted for app-shell compatibility, but this runner still uses
+ *   the current demo session from the new runtime architecture.
+ * - `onFinish` is not fully wired to a real SessionResult yet.
+ * - `onAbort` is wired so the user can return to the builder.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,12 +21,22 @@ import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEng
 import { buildDemoSession } from "../lib/session/buildDemoSession";
 import type { SessionRunnerState } from "../lib/session/sessionTypes";
 import type { RuntimeFrameResult } from "../lib/runtime/runtimeTypes";
+import type { SessionDefinition, SessionResult } from "../lib/sessionTypes";
+
+type Props = {
+  session?: SessionDefinition;
+  onFinish?: (result: SessionResult) => void;
+  onAbort?: () => void;
+};
 
 function formatStatusLabel(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function SessionRunner() {
+export default function SessionRunner({ session, onFinish, onAbort }: Props) {
+  void session;
+  void onFinish;
+
   const {
     videoRef,
     startCamera,
@@ -72,7 +83,8 @@ export default function SessionRunner() {
   const abortSession = useCallback(() => {
     engineRef.current.abortSession();
     setSessionState(engineRef.current.getState());
-  }, []);
+    if (onAbort) onAbort();
+  }, [onAbort]);
 
   useEffect(() => {
     loadSession();
@@ -132,9 +144,7 @@ export default function SessionRunner() {
           </p>
         </div>
 
-        {pipelineError ? (
-          <div style={styles.errorBox}>{pipelineError}</div>
-        ) : null}
+        {pipelineError ? <div style={styles.errorBox}>{pipelineError}</div> : null}
 
         <div style={styles.mainGrid}>
           <section style={styles.panel}>
