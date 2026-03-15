@@ -51,3 +51,65 @@ export type IntentSignalValue =
   | undefined;
 
 export type IntentSignalMap = Record<string, IntentSignalValue>;
+
+export type IntentErrorCode =
+  | "none"
+  | "missing_pose"
+  | "low_confidence"
+  | "signal_missing"
+  | "threshold_not_met"
+  | "invalid_model"
+  | "unknown";
+
+export type LiveIntentPhase =
+  | "idle"
+  | "ready"
+  | "moving_up"
+  | "at_top"
+  | "moving_down"
+  | "rep_complete"
+  | "completed"
+  | "error"
+  | string;
+
+export type LiveIntentState = {
+  phase: LiveIntentPhase;
+  startedAtMs?: number;
+  updatedAtMs?: number;
+  repCount?: number;
+  confidence?: number;
+  activeSide?: "left" | "right" | "bilateral" | null;
+  debug?: Record<string, unknown>;
+};
+
+export type IntentThresholdRule = {
+  signalId: string;
+  operator?: ">" | ">=" | "<" | "<=" | "==" | "!=";
+  value: number | boolean | string;
+};
+
+export type IntentTransitionRule = {
+  from: string;
+  to: string;
+  when?: IntentThresholdRule[];
+};
+
+export type ExerciseIntentModel = {
+  id: string;
+  name?: string;
+  version?: string;
+  signalDefinitions: SignalDefinition[];
+  thresholds?: IntentThresholdRule[];
+  transitions?: IntentTransitionRule[];
+  metadata?: Record<string, unknown>;
+};
+
+export type IntentEvaluationResult = {
+  ok: boolean;
+  errorCode?: IntentErrorCode;
+  state: LiveIntentState;
+  signals: IntentSignalMap;
+  matchedRules?: string[];
+  confidence?: number;
+  debug?: Record<string, unknown>;
+};
