@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import PoseTrackerPage from './PoseTrackerPage';
 import { EXERCISE_REGISTRY } from '../lib/exercises/exerciseRegistry';
+import type { PoseLandmarks } from '../lib/exercises/exerciseIntentTypes';
+import { useExerciseIntentRuntime } from '../lib/session/useExerciseIntentRuntime';
 import { rightArmRaiseIntent } from '../lib/exercises/rightArmRaiseIntent';
 import { leftArmRaiseIntent } from '../lib/exercises/leftArmRaiseIntent';
 import { seatedKneeLiftIntent } from '../lib/exercises/seatedKneeLiftIntent';
-import type { ExerciseIntentModel, PoseLandmarks } from '../lib/exercises/exerciseIntentTypes';
-import { useExerciseIntentRuntime } from '../lib/session/useExerciseIntentRuntime';
+import type { ExerciseIntentModel } from '../lib/exercises/exerciseIntentTypes';
 import type {
   RunnerPhase,
   SessionControlSignal,
@@ -180,9 +181,12 @@ function getCoachMessage(params: {
   const phaseName = debug.exercisePhase ?? 'idle';
   const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
 
+  const runtimeHeadline =
+    debug.statusText && debug.statusText.trim().length > 0 ? debug.statusText : null;
+
   if (phaseName === 'idle') {
     return {
-      headline: instructionCopy.action,
+      headline: runtimeHeadline ?? instructionCopy.action,
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
       status: 'ready',
       error: null as string | null
@@ -190,6 +194,15 @@ function getCoachMessage(params: {
   }
 
   if (phaseName === 'moving_up') {
+    if (runtimeHeadline) {
+      return {
+        headline: runtimeHeadline,
+        subline: `Reps ${completed}/${targetReps}`,
+        status: 'lifting',
+        error: null as string | null
+      };
+    }
+
     if (lift < 0.18) {
       return {
         headline: 'Lift a little higher.',
@@ -208,6 +221,15 @@ function getCoachMessage(params: {
   }
 
   if (phaseName === 'holding') {
+    if (runtimeHeadline && runtimeHeadline !== instructionCopy.continue) {
+      return {
+        headline: runtimeHeadline,
+        subline: `Reps ${completed}/${targetReps}`,
+        status: 'holding',
+        error: null as string | null
+      };
+    }
+
     if (holdTargetMs > 0 && holdMs < holdTargetMs) {
       return {
         headline: 'Hold.',
@@ -227,7 +249,7 @@ function getCoachMessage(params: {
 
   if (phaseName === 'moving_down') {
     return {
-      headline: 'Lower slowly.',
+      headline: runtimeHeadline ?? 'Lower slowly.',
       subline: `Reps ${completed}/${targetReps}`,
       status: 'lowering',
       error: null as string | null
@@ -236,7 +258,7 @@ function getCoachMessage(params: {
 
   if (phaseName === 'rep_complete') {
     return {
-      headline: 'Great job. That is one rep.',
+      headline: runtimeHeadline ?? 'Great job. That is one rep.',
       subline: `Reps ${completed}/${targetReps}`,
       status: 'rep_complete',
       error: null as string | null
@@ -253,7 +275,7 @@ function getCoachMessage(params: {
   }
 
   return {
-    headline: instructionCopy.action,
+    headline: runtimeHeadline ?? instructionCopy.action,
     subline: `Reps ${completed}/${targetReps}`,
     status: 'active',
     error: null as string | null
@@ -281,19 +303,14 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   const stepCompletionHandledRef = useRef(false);
 
   const currentStep = session.steps[currentStepIndex];
-  const currentExercise = currentStep
-    ? EXERCISE_REGISTRY[currentStep.exerciseId]
-    : null;
+  const currentExercise = currentStep ? EXERCISE_REGISTRY[currentStep.exerciseId] : null;
 
   const currentIntentExercise = useMemo(() => {
     return currentStep ? mapStepExerciseToIntent(currentStep.exerciseId) : null;
   }, [currentStep]);
 
-  const {
-    start: startIntentRuntime,
-    reset: resetIntentRuntime,
-    processLandmarks
-  } = useExerciseIntentRuntime(currentIntentExercise);
+  const { start: startIntentRuntime, reset: resetIntentRuntime, processLandmarks } =
+    useExerciseIntentRuntime(currentIntentExercise);
 
   const progressText = useMemo(() => {
     return `${Math.min(currentStepIndex + 1, session.steps.length)} / ${session.steps.length}`;
@@ -678,7 +695,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                     : runnerPhase === 'countdown'
                       ? `Starting in ${countdownValue}`
                       : runnerPhase === 'active'
-                        ? activeInstructionText
+                        ? undefined
                         : runnerPhase === 'exercise_complete'
                           ? 'Exercise completed successfully. Well done!'
                           : runnerPhase === 'rest'
@@ -732,6 +749,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                 label="Session Best Lift"
                 value={(latestDebug?.sessionPeakLift ?? 0).toFixed(3)}
               />
+              <Metric label="Status Text" value={latestDebug?.statusText ?? '—'} />
             </div>
           </div>
         ) : null}
