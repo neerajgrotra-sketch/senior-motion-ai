@@ -657,35 +657,33 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                 {latestDebug?.framingMessage ?? 'Step into the frame'}
               </span>
             </div>
-
-            <PoseTrackerPage
-              key={currentStep.id}
-              selectedExerciseId={currentStep.exerciseId}
-              sessionMode
-              targetReps={runnerPhase === 'active' ? currentStep.targetReps : undefined}
-              targetHoldSeconds={currentStep.targetHoldSeconds}
-              externalStatusText={
-                runnerPhase === 'session_intro'
-                  ? readiness.ready
-                    ? 'Raise either hand and hold for 1 second to begin the session'
-                    : readiness.message
-                  : runnerPhase === 'precheck'
-                    ? readiness.message
-                    : runnerPhase === 'countdown'
-                      ? `Starting in ${countdownValue}`
-                      : runnerPhase === 'exercise_complete'
-                        ? 'Exercise completed successfully. Well done!'
-                        : runnerPhase === 'rest'
-                          ? `Rest: ${restSecondsLeft}s`
-                          : runnerPhase === 'session_complete'
-                            ? 'Session completed successfully. Great work today!'
-                            : undefined
-              }
-              exerciseEnabled={runnerPhase === 'active'}
-              onDebugStateChange={handleDebugStateChange}
-              onControlGesture={setGestureSignal}
-              onPoseLandmarksChange={handlePoseLandmarksChange}
-            />
+<PoseTrackerPage
+  selectedExerciseId={currentStep.exerciseId}
+  sessionMode
+  targetReps={runnerPhase === 'active' ? currentStep.targetReps : undefined}
+  targetHoldSeconds={currentStep.targetHoldSeconds}
+  externalStatusText={
+    runnerPhase === 'session_intro'
+      ? readiness.ready
+        ? 'Raise either hand and hold for 1 second to begin the session'
+        : readiness.message
+      : runnerPhase === 'precheck'
+        ? readiness.message
+        : runnerPhase === 'countdown'
+          ? `Starting in ${countdownValue}`
+          : runnerPhase === 'exercise_complete'
+            ? 'Exercise completed successfully. Well done!'
+            : runnerPhase === 'rest'
+              ? `Rest: ${restSecondsLeft}s`
+              : runnerPhase === 'session_complete'
+                ? 'Session completed successfully. Great work today!'
+                : undefined
+  }
+  exerciseEnabled={runnerPhase === 'active'}
+  onDebugStateChange={handleDebugStateChange}
+  onControlGesture={setGestureSignal}
+  onPoseLandmarksChange={handlePoseLandmarksChange}
+/>
           </section>
         </div>
 
