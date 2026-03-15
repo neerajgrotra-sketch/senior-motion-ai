@@ -44,41 +44,53 @@ function getExerciseInstructionCopy(currentExerciseLabel: string) {
   if (label.includes('both hands')) {
     return {
       action: 'Raise both hands slowly.',
-      continue: 'Good. Keep raising both hands.'
+      continue: 'Good. Keep raising both hands.',
+      hold: 'Hold both hands up.',
+      lower: 'Lower both hands slowly.'
     };
   }
 
   if (label.includes('left')) {
     return {
       action: 'Raise your left hand slowly.',
-      continue: 'Good. Keep raising your left hand.'
+      continue: 'Good. Keep raising your left hand.',
+      hold: 'Hold your left hand there.',
+      lower: 'Lower your left hand slowly.'
     };
   }
 
   if (label.includes('right')) {
     return {
       action: 'Raise your right hand slowly.',
-      continue: 'Good. Keep raising your right hand.'
+      continue: 'Good. Keep raising your right hand.',
+      hold: 'Hold your right hand there.',
+      lower: 'Lower your right hand slowly.'
     };
   }
 
   if (label.includes('knee')) {
     return {
       action: 'Lift your knee slowly.',
-      continue: 'Good. Keep lifting your knee.'
+      continue: 'Good. Keep lifting your knee.',
+      hold: 'Hold your knee up.',
+      lower: 'Lower your knee slowly.'
     };
   }
 
   if (label.includes('sit to stand')) {
     return {
       action: 'Stand up slowly.',
-      continue: 'Good. Keep standing up.'
+      continue: 'Good. Keep standing up.',
+      hold: 'Hold steady.',
+      lower: 'Lower slowly back down.'
     };
   }
 
   return {
     action: 'Begin the movement slowly.',
-    continue: 'Good. Keep going.'
+    continue: 'Good. Keep going.',
+    hold: 'Hold there.',
+    lower: 'Lower slowly.'
   };
 }
 
@@ -176,7 +188,6 @@ function getCoachMessage(params: {
   }
 
   const completed = debug.repCount ?? 0;
-  const lift = debug.currentLiftNorm ?? 0;
   const holdMs = debug.holdMs ?? 0;
   const phaseName = debug.exercisePhase ?? 'idle';
   const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
@@ -184,9 +195,17 @@ function getCoachMessage(params: {
   const runtimeHeadline =
     debug.statusText && debug.statusText.trim().length > 0 ? debug.statusText : null;
 
+  // IMPORTANT:
+  // Phase-based guidance must dominate the UI.
+  // Runtime text is only used in idle/ready or as fallback.
   if (phaseName === 'idle') {
+    const lowerToStart =
+      runtimeHeadline &&
+      runtimeHeadline.toLowerCase().includes('lower') &&
+      runtimeHeadline.toLowerCase().includes('start');
+
     return {
-      headline: runtimeHeadline ?? instructionCopy.action,
+      headline: lowerToStart ? runtimeHeadline : instructionCopy.action,
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
       status: 'ready',
       error: null as string | null
@@ -194,24 +213,6 @@ function getCoachMessage(params: {
   }
 
   if (phaseName === 'moving_up') {
-    if (runtimeHeadline) {
-      return {
-        headline: runtimeHeadline,
-        subline: `Reps ${completed}/${targetReps}`,
-        status: 'lifting',
-        error: null as string | null
-      };
-    }
-
-    if (lift < 0.18) {
-      return {
-        headline: 'Lift a little higher.',
-        subline: `Reps ${completed}/${targetReps}`,
-        status: 'lifting',
-        error: 'insufficient_range'
-      };
-    }
-
     return {
       headline: instructionCopy.continue,
       subline: `Reps ${completed}/${targetReps}`,
@@ -221,18 +222,9 @@ function getCoachMessage(params: {
   }
 
   if (phaseName === 'holding') {
-    if (runtimeHeadline && runtimeHeadline !== instructionCopy.continue) {
-      return {
-        headline: runtimeHeadline,
-        subline: `Reps ${completed}/${targetReps}`,
-        status: 'holding',
-        error: null as string | null
-      };
-    }
-
     if (holdTargetMs > 0 && holdMs < holdTargetMs) {
       return {
-        headline: 'Hold.',
+        headline: instructionCopy.hold,
         subline: `${Math.ceil((holdTargetMs - holdMs) / 1000)}s remaining`,
         status: 'holding',
         error: null as string | null
@@ -249,7 +241,7 @@ function getCoachMessage(params: {
 
   if (phaseName === 'moving_down') {
     return {
-      headline: runtimeHeadline ?? 'Lower slowly.',
+      headline: instructionCopy.lower,
       subline: `Reps ${completed}/${targetReps}`,
       status: 'lowering',
       error: null as string | null
@@ -258,7 +250,7 @@ function getCoachMessage(params: {
 
   if (phaseName === 'rep_complete') {
     return {
-      headline: runtimeHeadline ?? 'Great job. That is one rep.',
+      headline: 'Great job. That is one rep.',
       subline: `Reps ${completed}/${targetReps}`,
       status: 'rep_complete',
       error: null as string | null
@@ -593,11 +585,6 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     targetReps: currentStep.targetReps
   });
 
-  const activeInstructionText =
-    runnerPhase === 'active'
-      ? `Exercise ${currentStepIndex + 1} of ${session.steps.length}: ${currentExercise.label} | Target reps: ${currentStep.targetReps} | Completed: ${latestDebug?.repCount ?? 0}`
-      : undefined;
-
   return (
     <main style={{ minHeight: '100vh', padding: 24, background: '#020817' }}>
       <div style={{ maxWidth: 1440, margin: '0 auto' }}>
@@ -692,17 +679,15 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                     : readiness.message
                   : runnerPhase === 'precheck'
                     ? readiness.message
-                    : runnerPhase === 'countdown'
-                      ? `Starting in ${countdownValue}`
-                      : runnerPhase === 'active'
-                        ? undefined
-                        : runnerPhase === 'exercise_complete'
-                          ? 'Exercise completed successfully. Well done!'
-                          : runnerPhase === 'rest'
-                            ? `Rest: ${restSecondsLeft}s`
-                            : runnerPhase === 'session_complete'
-                              ? 'Session completed successfully. Great work today!'
-                              : undefined
+                  : runnerPhase === 'countdown'
+                    ? `Starting in ${countdownValue}`
+                  : runnerPhase === 'exercise_complete'
+                    ? 'Exercise completed successfully. Well done!'
+                  : runnerPhase === 'rest'
+                    ? `Rest: ${restSecondsLeft}s`
+                  : runnerPhase === 'session_complete'
+                    ? 'Session completed successfully. Great work today!'
+                  : undefined
               }
               exerciseEnabled={runnerPhase === 'active'}
               onDebugStateChange={setLatestDebug}
@@ -733,22 +718,6 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
               <Metric label="Rep Count" value={latestDebug?.repCount ?? 0} />
               <Metric label="Hold (ms)" value={Math.round(latestDebug?.holdMs ?? 0)} />
               <Metric label="Current Lift" value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)} />
-              <Metric
-                label="Rep Peak Lift"
-                value={(latestDebug?.currentRepPeakLift ?? 0).toFixed(3)}
-              />
-              <Metric
-                label="Last Rep Peak"
-                value={
-                  latestDebug?.lastRepPeakLift != null
-                    ? latestDebug.lastRepPeakLift.toFixed(3)
-                    : '—'
-                }
-              />
-              <Metric
-                label="Session Best Lift"
-                value={(latestDebug?.sessionPeakLift ?? 0).toFixed(3)}
-              />
               <Metric label="Status Text" value={latestDebug?.statusText ?? '—'} />
             </div>
           </div>
