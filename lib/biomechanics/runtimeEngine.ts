@@ -24,16 +24,31 @@ function detectErrors(
     }
   }
 
+  const targetLiftNorm = definition.thresholds.targetLiftNorm ?? 0.55;
+  const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
+
   if (
     state.phase === 'ready' &&
     definition.thresholds.noResponseMs != null &&
     signals.timeSincePhaseStartMs >= definition.thresholds.noResponseMs &&
-    signals.rightHandLiftNorm < (definition.thresholds.targetLiftNorm ?? 0.55) * 0.4
+    signals.rightHandLiftNorm < targetLiftNorm * 0.4
   ) {
     detected.push({
       code: 'no_response',
       severity: 'medium',
       message: definition.cues.corrections.no_response ?? 'Start when you are ready.'
+    });
+  }
+
+  if (
+    state.phase === 'ascending' &&
+    signals.timeSincePhaseStartMs > 2200 &&
+    signals.rightHandLiftNorm < targetLiftNorm
+  ) {
+    detected.push({
+      code: 'insufficient_range',
+      severity: 'medium',
+      message: definition.cues.corrections.insufficient_range ?? 'Lift a little higher.'
     });
   }
 
@@ -51,29 +66,13 @@ function detectErrors(
 
   if (
     state.phase === 'descending' &&
-    definition.thresholds.returnLiftNorm != null &&
-    signals.rightHandLiftNorm > definition.thresholds.returnLiftNorm &&
-    signals.timeSincePhaseStartMs > 1800
+    signals.timeSincePhaseStartMs > 1800 &&
+    signals.rightHandLiftNorm > returnLiftNorm
   ) {
     detected.push({
       code: 'incomplete_return',
       severity: 'medium',
-      message:
-        definition.cues.corrections.incomplete_return ?? 'Lower all the way down.'
-    });
-  }
-
-  if (
-    state.phase === 'ascending' &&
-    signals.timeSincePhaseStartMs > 2200 &&
-    definition.thresholds.targetLiftNorm != null &&
-    signals.rightHandLiftNorm < definition.thresholds.targetLiftNorm
-  ) {
-    detected.push({
-      code: 'insufficient_range',
-      severity: 'medium',
-      message:
-        definition.cues.corrections.insufficient_range ?? 'Lift a little higher.'
+      message: definition.cues.corrections.incomplete_return ?? 'Lower all the way down.'
     });
   }
 
@@ -93,13 +92,14 @@ function getPrimaryCue(
 
   const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
   const targetLiftNorm = definition.thresholds.targetLiftNorm ?? 0.55;
+  const minHoldMs = definition.thresholds.minHoldMs ?? 0;
 
   switch (phase) {
     case 'idle':
       return definition.cues.intro;
 
     case 'ready':
-      if (signals.rightHandLiftNorm > returnLiftNorm) {
+      if (signals.rightHandLiftNorm > returnLiftNorm + 0.05) {
         return 'Lower your right hand to start.';
       }
       return definition.cues.ready;
@@ -111,7 +111,10 @@ function getPrimaryCue(
       return 'Good. Keep going.';
 
     case 'holding':
-      return definition.cues.hold;
+      if (signals.holdDurationMs < minHoldMs) {
+        return definition.cues.hold;
+      }
+      return 'Great. Now lower slowly.';
 
     case 'descending':
       return definition.cues.descend;
@@ -138,50 +141,51 @@ export function advanceExerciseRuntime(params: {
     state.phaseStartedAt = signals.timestamp;
   };
 
-  const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
   const targetLiftNorm = definition.thresholds.targetLiftNorm ?? 0.55;
+  const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
   const minHoldMs = definition.thresholds.minHoldMs ?? 0;
 
   const handDown = signals.rightHandLiftNorm <= returnLiftNorm;
   const handRaisedEnough = signals.rightHandLiftNorm >= targetLiftNorm;
 
-  // Step 1: If posture is valid, move out of idle into ready.
-  // Do NOT require hand-down just to become ready.
+  const postureAllowed =
+    definition.allowedPostures.includes(signals.posture) || signals.posture === 'unknown';
+
+  // Phase 1: idle -> ready
   if (state.phase === 'idle') {
-    const postureAllowed = definition.allowedPostures.includes(signals.posture);
-    if (postureAllowed || signals.posture === 'unknown') {
+    if (postureAllowed) {
       goToPhase('ready');
     }
   }
 
-  // Step 2: Ready means waiting for true start position.
-  // If the hand is already up, stay in ready and coach the user to lower it first.
+  // Phase 2: ready -> ascending
+  // We start ascending whenever the hand is no longer in the down zone.
+  // This fixes the old impossible transition.
   if (state.phase === 'ready') {
-    if (handDown) {
-      // waiting for ascent
-      if (signals.rightHandLiftNorm > returnLiftNorm + 0.08) {
-        state.repStartedAt = signals.timestamp;
-        goToPhase('ascending');
-      }
+    if (!handDown) {
+      state.repStartedAt = signals.timestamp;
+      goToPhase('ascending');
     }
   }
 
-  // Step 3: Ascending until target reached
+  // Phase 3: ascending -> holding
   if (state.phase === 'ascending') {
     if (handRaisedEnough) {
-      state.holdStartedAt = signals.timestamp;
+      if (state.holdStartedAt == null) {
+        state.holdStartedAt = signals.timestamp;
+      }
       goToPhase('holding');
     }
   }
 
-  // Step 4: Holding until minimum hold reached
+  // Phase 4: holding -> descending
   if (state.phase === 'holding') {
     if (signals.holdDurationMs >= minHoldMs) {
       goToPhase('descending');
     }
   }
 
-  // Step 5: Descending until return-to-start
+  // Phase 5: descending -> rep_complete
   if (state.phase === 'descending') {
     if (handDown) {
       state.repCount += 1;
@@ -192,7 +196,7 @@ export function advanceExerciseRuntime(params: {
     }
   }
 
-  // Step 6: After rep complete, go back to ready
+  // Phase 6: rep_complete -> ready
   if (state.phase === 'rep_complete') {
     goToPhase('ready');
   }
