@@ -125,8 +125,8 @@ export type LegacyExerciseThresholds = {
   holdDurationMs: number;
   minRepDurationMs: number;
   controlledReturnMinMs: number;
+  maxRepDurationMs: number;
 
-  maxRepDurationMs?: number;
   returnMax?: number;
   minConfidence?: number;
   symmetryMaxDiff?: number;
