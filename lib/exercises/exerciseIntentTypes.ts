@@ -135,7 +135,19 @@ export type ExerciseIntentModel = {
     [key: string]: string | undefined;
   };
 
-  thresholds?: LegacyExerciseThresholds;
+  thresholds: LegacyExerciseThresholds;
+  transitions?: IntentTransitionRule[];
+  metadata?: Record<string, unknown>;
+  coaching: {
+    intro?: string;
+    success?: string;
+    correction?: string;
+    error?: string;
+    [key: string]: unknown;
+  };
+};
+
+  thresholds: LegacyExerciseThresholds;
   transitions?: IntentTransitionRule[];
   metadata?: Record<string, unknown>;
   coaching: {
