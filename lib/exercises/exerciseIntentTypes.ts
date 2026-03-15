@@ -43,9 +43,6 @@ export type SignalDefinition = {
   config: Record<string, unknown>;
 };
 
-/**
- * Legacy evaluator expects numeric signal maps.
- */
 export type IntentSignalValue = number;
 export type IntentSignalMap = Record<string, number>;
 
@@ -108,15 +105,25 @@ export type IntentTransitionRule = {
   when?: IntentThresholdRule[];
 };
 
+export type LegacyExerciseThresholds = {
+  startMax?: number;
+  targetMin?: number;
+  holdDurationMs?: number;
+  minRepDurationMs?: number;
+  maxRepDurationMs?: number;
+  returnMax?: number;
+  minConfidence?: number;
+  symmetryMaxDiff?: number;
+  postureMin?: number;
+  [key: string]: number | undefined;
+};
+
 export type ExerciseIntentModel = {
   id: string;
   name?: string;
   version?: string;
 
-  // legacy field name
   signals: SignalDefinition[];
-
-  // newer/alternate field name
   signalDefinitions?: SignalDefinition[];
 
   signalRefs: {
@@ -128,7 +135,7 @@ export type ExerciseIntentModel = {
     [key: string]: string | undefined;
   };
 
-  thresholds?: IntentThresholdRule[];
+  thresholds?: LegacyExerciseThresholds;
   transitions?: IntentTransitionRule[];
   metadata?: Record<string, unknown>;
   coaching: {
