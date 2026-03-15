@@ -4,13 +4,9 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import '@mediapipe/pose';
 
-import type {
-  DebugState,
-  ExerciseFrameFeatures,
-  ExerciseMachine,
-  ExerciseController
-} from '../lib/poseTypes';
+import type { DebugState } from '../lib/poseTypes';
 import type { PoseLandmarks } from '../lib/exercises/exerciseIntentTypes';
+import type { SessionControlSignal } from '../lib/sessionTypes';
 
 import {
   buildPoseTrack,
@@ -20,9 +16,6 @@ import {
   visibleKeypointCount
 } from '../lib/poseUtils';
 
-import { extractFeatures } from '../lib/features/extractFeatures';
-import { stabilizeFeatures } from '../lib/features/stabilizeFeatures';
-import { EXERCISE_OPTIONS, EXERCISE_REGISTRY } from '../lib/exercises/exerciseRegistry';
 import {
   computeTargetFrame,
   createDefaultFrame,
@@ -33,14 +26,22 @@ import {
 } from '../lib/framing/autoFramer';
 import { assessFraming } from '../lib/framing/framingAdvisor';
 import { mapTrackKeypointsToIntentLandmarks } from '../lib/pose/mapTrackKeypointsToIntentLandmarks';
-import type { SessionControlSignal } from '../lib/sessionTypes';
+
+import { extractBiomechanicsSignals } from '../lib/biomechanics/signalExtractor';
+import { advanceExerciseRuntime } from '../lib/biomechanics/runtimeEngine';
+import {
+  createInitialRuntimeState,
+  type ExerciseDefinition,
+  type RuntimeAssessment,
+  type RuntimeState
+} from '../lib/biomechanics/types';
+import { RAISE_RIGHT_HAND_DEFINITION } from '../lib/biomechanics/exerciseDefinitions';
 
 const VIDEO_WIDTH = 960;
 const VIDEO_HEIGHT = 720;
 const DETECTION_INTERVAL_MS = 50;
 const PERSON_ID = 1;
 const LOST_AFTER_MS = 2000;
-const DEFAULT_EXERCISE_ID = 'raise_right_hand';
 
 type Props = {
   selectedExerciseId?: string;
@@ -58,6 +59,26 @@ type Props = {
   onControlGesture?: (signal: SessionControlSignal) => void;
   onPoseLandmarksChange?: (landmarks: PoseLandmarks) => void;
 };
+
+type PreviousFrameState = {
+  timestamp: number;
+  leftWristY: number;
+  rightWristY: number;
+  leftKneeY: number;
+  rightKneeY: number;
+};
+
+type RuntimeStats = {
+  sessionPeakLift: number;
+  currentRepPeakLift: number;
+  lastRepPeakLift: number | null;
+};
+
+function getDefinitionForExerciseId(_exerciseId?: string): ExerciseDefinition {
+  // Temporary mapping while migrating to the new data-driven engine.
+  // Extend this switch as you add more definitions.
+  return RAISE_RIGHT_HAND_DEFINITION;
+}
 
 function getInitialDebugState(exerciseId: string): DebugState {
   return {
@@ -108,8 +129,32 @@ function mapCameraError(err: unknown): string {
   }
 }
 
+function mapRuntimePhaseToLegacyPhase(phase: RuntimeAssessment['phase']): DebugState['exercisePhase'] {
+  switch (phase) {
+    case 'idle':
+      return 'idle';
+    case 'ready':
+      return 'idle';
+    case 'ascending':
+      return 'moving_up';
+    case 'holding':
+      return 'holding';
+    case 'descending':
+      return 'moving_down';
+    case 'rep_complete':
+    case 'completed':
+      return 'rep_complete';
+    case 'stalled':
+      return 'idle';
+    case 'lost_tracking':
+      return 'lost';
+    default:
+      return 'idle';
+  }
+}
+
 export default function PoseTrackerPage({
-  selectedExerciseId: selectedExerciseIdProp,
+  selectedExerciseId,
   sessionMode = false,
   targetReps,
   targetHoldSeconds,
@@ -125,20 +170,31 @@ export default function PoseTrackerPage({
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
   const animationRef = useRef<number | null>(null);
+
   const lastRunRef = useRef<number>(0);
   const lastFpsTickRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
   const lastSeenRef = useRef<number>(0);
   const activeTrackRef = useRef<ReturnType<typeof buildPoseTrack> | null>(null);
-  const stableFeaturesRef = useRef<ExerciseFrameFeatures | null>(null);
   const autoFrameRef = useRef<FrameRect | null>(null);
-  const completedCalledRef = useRef(false);
   const startGestureSinceRef = useRef<number | null>(null);
   const isStartingRef = useRef(false);
+  const completedCalledRef = useRef(false);
+
+  const previousFrameRef = useRef<PreviousFrameState | null>(null);
+  const runtimeStateRef = useRef<RuntimeState>(createInitialRuntimeState(performance.now()));
+  const runtimeStatsRef = useRef<RuntimeStats>({
+    sessionPeakLift: 0,
+    currentRepPeakLift: 0,
+    lastRepPeakLift: null
+  });
 
   const onPoseLandmarksChangeRef = useRef<Props['onPoseLandmarksChange']>(onPoseLandmarksChange);
   const onControlGestureRef = useRef<Props['onControlGesture']>(onControlGesture);
   const onExerciseCompleteRef = useRef<Props['onExerciseComplete']>(onExerciseComplete);
+  const externalStatusTextRef = useRef(externalStatusText);
+  const exerciseEnabledRef = useRef(exerciseEnabled);
+  const targetHoldSecondsRef = useRef(targetHoldSeconds);
 
   useEffect(() => {
     onPoseLandmarksChangeRef.current = onPoseLandmarksChange;
@@ -152,22 +208,21 @@ export default function PoseTrackerPage({
     onExerciseCompleteRef.current = onExerciseComplete;
   }, [onExerciseComplete]);
 
-  const [localExerciseId, setLocalExerciseId] = useState(DEFAULT_EXERCISE_ID);
+  useEffect(() => {
+    externalStatusTextRef.current = externalStatusText;
+  }, [externalStatusText]);
 
-  const selectedExerciseId = sessionMode
-    ? selectedExerciseIdProp ?? DEFAULT_EXERCISE_ID
-    : localExerciseId;
+  useEffect(() => {
+    exerciseEnabledRef.current = exerciseEnabled;
+  }, [exerciseEnabled]);
 
-  const selectedExercise = useMemo(() => {
-    return EXERCISE_REGISTRY[selectedExerciseId] ?? EXERCISE_REGISTRY[DEFAULT_EXERCISE_ID];
+  useEffect(() => {
+    targetHoldSecondsRef.current = targetHoldSeconds;
+  }, [targetHoldSeconds]);
+
+  const exerciseDefinition = useMemo(() => {
+    return getDefinitionForExerciseId(selectedExerciseId);
   }, [selectedExerciseId]);
-
-  const selectedExerciseRef = useRef<ExerciseController>(selectedExercise);
-  const machineRef = useRef<ExerciseMachine>(selectedExercise.createMachine());
-
-  const exerciseEnabledRef = useRef(exerciseEnabled);
-  const externalStatusTextRef = useRef(externalStatusText);
-  const targetHoldSecondsRef = useRef(targetHoldSeconds);
 
   const [isRunning, setIsRunning] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(true);
@@ -175,38 +230,16 @@ export default function PoseTrackerPage({
   const [showDots, setShowDots] = useState(true);
   const [autoFramingEnabled, setAutoFramingEnabled] = useState(false);
   const [error, setError] = useState('');
-  const [debug, setDebug] = useState<DebugState>(getInitialDebugState(DEFAULT_EXERCISE_ID));
+  const [debug, setDebug] = useState<DebugState>(getInitialDebugState(exerciseDefinition.id));
 
   useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
-
-  useEffect(() => {
-    selectedExerciseRef.current = selectedExercise;
-    machineRef.current = selectedExercise.createMachine();
-    stableFeaturesRef.current = null;
-    completedCalledRef.current = false;
-
+    resetRuntimeState(exerciseDefinition);
     setDebug((prev) => ({
-      ...getInitialDebugState(selectedExercise.id),
+      ...getInitialDebugState(exerciseDefinition.id),
       fps: prev.fps,
       tracking: prev.tracking
     }));
-  }, [selectedExercise]);
-
-  useEffect(() => {
-    exerciseEnabledRef.current = exerciseEnabled;
-  }, [exerciseEnabled]);
-
-  useEffect(() => {
-    externalStatusTextRef.current = externalStatusText;
-  }, [externalStatusText]);
-
-  useEffect(() => {
-    targetHoldSecondsRef.current = targetHoldSeconds;
-  }, [targetHoldSeconds]);
+  }, [exerciseDefinition]);
 
   useEffect(() => {
     if (!sessionMode || completedCalledRef.current) return;
@@ -225,6 +258,34 @@ export default function PoseTrackerPage({
   useEffect(() => {
     onDebugStateChange?.(debug);
   }, [debug, onDebugStateChange]);
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  function resetRuntimeState(definition: ExerciseDefinition) {
+    activeTrackRef.current = null;
+    autoFrameRef.current = null;
+    previousFrameRef.current = null;
+    startGestureSinceRef.current = null;
+    completedCalledRef.current = false;
+
+    runtimeStateRef.current = createInitialRuntimeState(performance.now());
+    runtimeStatsRef.current = {
+      sessionPeakLift: 0,
+      currentRepPeakLift: 0,
+      lastRepPeakLift: null
+    };
+
+    lastSeenRef.current = performance.now();
+    lastRunRef.current = 0;
+    frameCountRef.current = 0;
+    lastFpsTickRef.current = performance.now();
+
+    setDebug(getInitialDebugState(definition.id));
+  }
 
   async function ensureDetector() {
     if (!detectorRef.current) {
@@ -282,24 +343,6 @@ export default function PoseTrackerPage({
     throw lastError instanceof Error ? lastError : new Error('Could not access camera.');
   }
 
-  function resetRuntimeState() {
-    activeTrackRef.current = null;
-    stableFeaturesRef.current = null;
-    autoFrameRef.current = null;
-    startGestureSinceRef.current = null;
-    completedCalledRef.current = false;
-
-    const currentExercise = selectedExerciseRef.current;
-    machineRef.current = currentExercise.createMachine();
-
-    lastSeenRef.current = performance.now();
-    lastRunRef.current = 0;
-    frameCountRef.current = 0;
-    lastFpsTickRef.current = performance.now();
-
-    setDebug(getInitialDebugState(currentExercise.id));
-  }
-
   function releaseMediaResources() {
     if (animationRef.current != null) {
       cancelAnimationFrame(animationRef.current);
@@ -329,16 +372,21 @@ export default function PoseTrackerPage({
     }
   }
 
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
   async function startCamera() {
     if (isStartingRef.current) return;
-
     isStartingRef.current = true;
 
     try {
       setError('');
-
       releaseMediaResources();
-      resetRuntimeState();
+      resetRuntimeState(exerciseDefinition);
       clearCanvas();
 
       const video = videoRef.current;
@@ -362,7 +410,7 @@ export default function PoseTrackerPage({
     } catch (err) {
       console.error(err);
       releaseMediaResources();
-      resetRuntimeState();
+      resetRuntimeState(exerciseDefinition);
       clearCanvas();
       setIsRunning(false);
       setError(mapCameraError(err));
@@ -373,7 +421,7 @@ export default function PoseTrackerPage({
 
   function stopCamera() {
     releaseMediaResources();
-    resetRuntimeState();
+    resetRuntimeState(exerciseDefinition);
     setIsRunning(false);
     clearCanvas();
   }
@@ -383,13 +431,6 @@ export default function PoseTrackerPage({
       autoFrameRef.current = null;
       return !prev;
     });
-  }
-
-  function clearCanvas() {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
   async function renderLoop(ts: number) {
@@ -450,15 +491,26 @@ export default function PoseTrackerPage({
 
           onPoseLandmarksChangeRef.current?.(intentLandmarks);
 
-          const rawFeatures = extractFeatures(smoothedPose, ts);
-          const stableFeatures = stabilizeFeatures(rawFeatures, stableFeaturesRef.current);
-          stableFeaturesRef.current = stableFeatures;
+          const {
+            signals,
+            nextPreviousFrame
+          } = extractBiomechanicsSignals({
+            track: smoothedPose,
+            timestamp: ts,
+            previousFrame: previousFrameRef.current,
+            runtime: {
+              repStartedAt: runtimeStateRef.current.repStartedAt,
+              phaseStartedAt: runtimeStateRef.current.phaseStartedAt,
+              holdStartedAt: runtimeStateRef.current.holdStartedAt
+            }
+          });
 
-          const eitherHandUp =
-            stableFeatures.leftHandAboveShoulder || stableFeatures.rightHandAboveShoulder;
+          previousFrameRef.current = nextPreviousFrame;
 
+          const eitherHandUp = signals.leftHandAboveShoulder || signals.rightHandAboveShoulder;
           let gestureHoldMs = 0;
-          if (eitherHandUp && stableFeatures.postureStable) {
+
+          if (eitherHandUp && signals.postureStable) {
             if (startGestureSinceRef.current == null) {
               startGestureSinceRef.current = ts;
             }
@@ -472,21 +524,51 @@ export default function PoseTrackerPage({
             holdMs: gestureHoldMs
           });
 
-          const currentExercise = selectedExerciseRef.current;
+          let assessment: RuntimeAssessment = {
+            phase: runtimeStateRef.current.phase,
+            repCount: runtimeStateRef.current.repCount,
+            progress: 0,
+            activeErrors: [],
+            primaryCue: exerciseDefinition.cues.ready,
+            currentLift: 0,
+            holdMs: 0
+          };
 
           if (exerciseEnabledRef.current) {
-            machineRef.current = currentExercise.advance(machineRef.current, stableFeatures);
+            const runtimeResult = advanceExerciseRuntime({
+              definition: exerciseDefinition,
+              signals,
+              state: runtimeStateRef.current
+            });
+
+            runtimeStateRef.current = runtimeResult.state;
+            assessment = runtimeResult.assessment;
+          }
+
+          const currentLift = assessment.currentLift;
+          runtimeStatsRef.current.sessionPeakLift = Math.max(
+            runtimeStatsRef.current.sessionPeakLift,
+            currentLift
+          );
+          runtimeStatsRef.current.currentRepPeakLift = Math.max(
+            runtimeStatsRef.current.currentRepPeakLift,
+            currentLift
+          );
+
+          if (assessment.phase === 'rep_complete') {
+            runtimeStatsRef.current.lastRepPeakLift = runtimeStatsRef.current.currentRepPeakLift;
+            runtimeStatsRef.current.currentRepPeakLift = 0;
           }
 
           const framing = assessFraming({
             track: smoothedPose,
             frameWidth: video.videoWidth,
             frameHeight: video.videoHeight,
-            overheadMode:
-              currentExercise.id === 'raise_right_hand' ||
-              currentExercise.id === 'raise_left_hand' ||
-              currentExercise.id === 'both_hands_up'
+            overheadMode: true
           });
+
+          const avgKneeAngle =
+            ((signals.leftKneeAngleDeg ?? 0) + (signals.rightKneeAngleDeg ?? 0)) / 2;
 
           setDebug((prev) => ({
             ...prev,
@@ -495,21 +577,21 @@ export default function PoseTrackerPage({
             trackId: smoothedPose.id,
             confidence: smoothedPose.confidence,
             visibleKeypoints: visibleKeypointCount(smoothedPose.keypoints),
-            posture: stableFeatures.posture,
-            avgKneeAngle: stableFeatures.avgKneeAngle,
-            exerciseId: currentExercise.id,
-            exercisePhase: machineRef.current.phase,
-            repCount: machineRef.current.repCount,
-            holdMs: machineRef.current.holdMs,
+            posture: signals.posture,
+            avgKneeAngle,
+            exerciseId: exerciseDefinition.id,
+            exercisePhase: mapRuntimePhaseToLegacyPhase(assessment.phase),
+            repCount: assessment.repCount,
+            holdMs: assessment.holdMs,
             statusText: externalStatusTextRef.current
               ? externalStatusTextRef.current
               : targetHoldSecondsRef.current && targetHoldSecondsRef.current > 0
-                ? `${machineRef.current.statusText} (target hold ${targetHoldSecondsRef.current}s)`
-                : machineRef.current.statusText,
-            currentLiftNorm: currentExercise.getCurrentLift(stableFeatures),
-            currentRepPeakLift: machineRef.current.currentRepPeakLift,
-            lastRepPeakLift: machineRef.current.lastRepPeakLift,
-            sessionPeakLift: machineRef.current.sessionPeakLift,
+                ? `${assessment.primaryCue ?? 'Hold'} (target hold ${targetHoldSecondsRef.current}s)`
+                : (assessment.primaryCue ?? exerciseDefinition.cues.ready),
+            currentLiftNorm: assessment.currentLift,
+            currentRepPeakLift: runtimeStatsRef.current.currentRepPeakLift,
+            lastRepPeakLift: runtimeStatsRef.current.lastRepPeakLift,
+            sessionPeakLift: runtimeStatsRef.current.sessionPeakLift,
             framingStatus: framing.status,
             framingMessage: framing.message
           }));
@@ -517,12 +599,10 @@ export default function PoseTrackerPage({
       } else {
         if (ts - lastSeenRef.current > LOST_AFTER_MS) {
           activeTrackRef.current = null;
-          stableFeaturesRef.current = null;
           autoFrameRef.current = null;
+          previousFrameRef.current = null;
           startGestureSinceRef.current = null;
-
-          const currentExercise = selectedExerciseRef.current;
-          machineRef.current = currentExercise.createMachine();
+          runtimeStateRef.current = createInitialRuntimeState(ts);
           trackForDraw = null;
 
           onControlGestureRef.current?.({ detected: false, holdMs: 0 });
@@ -536,7 +616,7 @@ export default function PoseTrackerPage({
             visibleKeypoints: 0,
             posture: 'unknown',
             avgKneeAngle: 0,
-            exerciseId: currentExercise.id,
+            exerciseId: exerciseDefinition.id,
             exercisePhase: 'lost',
             holdMs: 0,
             statusText: externalStatusTextRef.current ?? 'Person lost - step back into frame',
@@ -674,22 +754,7 @@ export default function PoseTrackerPage({
           <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Exercise</div>
-              <select
-                value={selectedExerciseId}
-                onChange={(e) => setLocalExerciseId(e.target.value)}
-                style={selectStyle}
-              >
-                {EXERCISE_OPTIONS.map((exercise) => (
-                  <option key={exercise.id} value={exercise.id}>
-                    {exercise.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>Prompt</div>
-              <div style={{ fontSize: 28, fontWeight: 800 }}>{machineRef.current.prompt}</div>
+              <div style={{ fontSize: 28, fontWeight: 800 }}>{exerciseDefinition.label}</div>
             </div>
           </div>
 
@@ -804,13 +869,4 @@ const cardStyle: CSSProperties = {
   border: '1px solid #1f2942',
   borderRadius: 16,
   padding: 16
-};
-
-const selectStyle: CSSProperties = {
-  background: '#0f172a',
-  color: 'white',
-  border: '1px solid #334155',
-  borderRadius: 10,
-  padding: '10px 12px',
-  fontWeight: 600
 };
