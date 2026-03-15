@@ -179,6 +179,23 @@ export function createRuntimeEngine(
     const previousPhase = state.repState.phase;
     const phaseChanged = evaluation.phase !== previousPhase;
 
+    if (evaluation.phase === "at_top" && previousPhase !== "at_top") {
+  phaseStartedAtMs = frame.timestampMs
+}
+    
+    const holdMs = currentExercise.thresholds?.minHoldMs ?? 0
+
+if (
+  previousPhase === "at_top" &&
+  evaluation.phase === "moving_down"
+) {
+  const holdElapsed = frame.timestampMs - phaseStartedAtMs
+
+  if (holdElapsed < holdMs) {
+    evaluation.phase = "at_top"
+  }
+}
+
     if (phaseChanged) {
       phaseStartedAtMs = frame.timestampMs;
     }
