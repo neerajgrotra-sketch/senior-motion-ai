@@ -4,15 +4,17 @@
  * SessionRunner.tsx
  *
  * Purpose
- * - Render the MVP exercise runner screen
+ * - Render the current exercise runner screen
  * - Use the new pose -> biomechanics -> runtime -> session engine path
- * - Accept page-level props so the app shell can route Builder -> Runner -> Results
+ * - Accept a builder session from app/page.tsx
+ * - Auto-start camera when the user starts the session
+ * - Stay defensive if any exercise mapping is missing
  *
  * Notes
- * - If a builder session is provided, it is converted into the new runtime session format.
- * - If no builder session is provided, the runner falls back to the demo session.
- * - onAbort returns to the builder.
- * - onFinish is accepted for future wiring, but not yet used to generate a full SessionResult.
+ * - This keeps the current runner architecture intact
+ * - It falls back to the demo session if no builder session is provided
+ * - onAbort returns to the builder
+ * - onFinish is accepted for future wiring, but not yet fully emitted
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -35,8 +37,6 @@ function formatStatusLabel(value: string): string {
 }
 
 export default function SessionRunner({ session, onFinish, onAbort }: Props) {
-  void onFinish;
-
   const {
     videoRef,
     startCamera,
@@ -63,6 +63,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
   );
   const [runtimeResult, setRuntimeResult] = useState<RuntimeFrameResult | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [isStartingSession, setIsStartingSession] = useState(false);
 
   const loadSession = useCallback(() => {
     engineRef.current.loadSession(runtimeSession);
@@ -71,10 +72,24 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
     setRuntimeResult(null);
   }, [runtimeSession]);
 
-  const startSession = useCallback(() => {
-    engineRef.current.startSession(performance.now());
-    setSessionState(engineRef.current.getState());
-  }, []);
+  const startSession = useCallback(async () => {
+    if (!detectorReady || isStartingSession) return;
+
+    setIsStartingSession(true);
+
+    try {
+      if (!isCameraOn) {
+        await startCamera();
+      }
+
+      engineRef.current.startSession(performance.now());
+      setSessionState(engineRef.current.getState());
+    } catch (error) {
+      console.error("Failed to start session:", error);
+    } finally {
+      setIsStartingSession(false);
+    }
+  }, [detectorReady, isStartingSession, isCameraOn, startCamera]);
 
   const pauseSession = useCallback(() => {
     engineRef.current.pauseSession();
@@ -107,22 +122,57 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
     const result = engineRef.current.processFrame(latestBiomechanicsFrame);
     setRuntimeResult(result.runtimeResult);
     setSessionState(result.sessionState);
-  }, [latestBiomechanicsFrame]);
+
+    if (result.justCompletedSession && onFinish) {
+      const finishedAt = Date.now();
+      const startedAt =
+        sessionState.progress.sessionStartedAtMs ?? finishedAt;
+
+      const fallbackSessionName =
+        session?.name?.trim() || runtimeSession.title || "Session";
+
+      const resultPayload: SessionResult = {
+        sessionName: fallbackSessionName,
+        startedAt,
+        finishedAt,
+        totalDurationMs: Math.max(0, finishedAt - startedAt),
+        steps:
+          runtimeSession.items.map((item) => ({
+            stepId: item.id,
+            label: item.exercise?.title ?? item.exerciseId,
+            targetReps: item.repTarget,
+            completedReps:
+              item.id === result.sessionState.currentItem?.id
+                ? result.runtimeResult?.exerciseState?.repState.repCount ?? 0
+                : item.repTarget,
+            requiredPosture: "either",
+            postureAtStart: "unknown",
+            targetHoldSeconds: Math.round((item.holdMs ?? 0) / 1000),
+            restSeconds: Math.round((item.restAfterMs ?? 0) / 1000),
+            sessionPeakLift: 0,
+            lastRepPeakLift: null,
+            success: true,
+          })) ?? [],
+      };
+
+      onFinish(resultPayload);
+    }
+  }, [latestBiomechanicsFrame, onFinish, runtimeSession, session, sessionState.progress.sessionStartedAtMs]);
 
   const currentExerciseTitle =
-    sessionState.currentItem?.exercise.title ?? "No exercise loaded";
+    sessionState.currentItem?.exercise?.title ?? "No exercise loaded";
 
   const currentRepCount = runtimeResult?.exerciseState?.repState.repCount ?? 0;
 
   const currentRepTarget =
     sessionState.currentItem?.repTarget ??
-    sessionState.currentItem?.exercise.repTargetDefault ??
+    sessionState.currentItem?.exercise?.repTargetDefault ??
     0;
 
   const coachingMessage =
     runtimeResult?.coachingMessage ??
     (sessionState.status === "ready"
-      ? "Press Start Session when you are ready."
+      ? "Press Begin Session when you are ready."
       : sessionState.status === "running"
         ? isRunning
           ? "Tracking movement..."
@@ -131,7 +181,9 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
           ? "Session paused."
           : sessionState.status === "completed"
             ? "Session complete."
-            : "Idle");
+            : sessionState.status === "aborted"
+              ? "Session aborted."
+              : "Idle");
 
   const completedExercises = sessionState.progress.completedExerciseIds.length;
   const totalExercises = sessionState.progress.totalExercises;
@@ -139,6 +191,9 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
   const currentPhase = runtimeResult?.exerciseState?.repState.phase
     ? formatStatusLabel(runtimeResult.exerciseState.repState.phase)
     : "n/a";
+
+  const beginDisabled =
+    !detectorReady || !sessionLoaded || isStartingSession;
 
   return (
     <div style={styles.page}>
@@ -158,7 +213,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
               <div>
                 <h2 style={styles.panelTitle}>Live Camera</h2>
                 <p style={styles.panelSubtitle}>
-                  Start once and keep tracking across the full session.
+                  The camera will start automatically when the session begins.
                 </p>
               </div>
 
@@ -189,7 +244,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
                   <div>
                     <div style={styles.videoOverlayTitle}>Camera is off</div>
                     <div style={styles.videoOverlayText}>
-                      Start camera to begin pose tracking
+                      Press Begin Session to start camera and tracking
                     </div>
                   </div>
                 </div>
@@ -198,14 +253,18 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
 
             <div style={styles.buttonRow}>
               <button
-                onClick={() => void startCamera()}
-                disabled={!detectorReady}
+                onClick={startSession}
+                disabled={beginDisabled}
                 style={{
                   ...styles.primaryButton,
-                  ...(!detectorReady ? styles.disabledButton : {}),
+                  ...(beginDisabled ? styles.disabledButton : {}),
                 }}
               >
-                {detectorReady ? "Start Camera" : "Loading Pose Detector..."}
+                {isStartingSession
+                  ? "Starting..."
+                  : detectorReady
+                    ? "Begin Session"
+                    : "Loading Pose Detector..."}
               </button>
 
               <button onClick={stopCamera} style={styles.secondaryButton}>
@@ -223,7 +282,9 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
                 </p>
               </div>
 
-              <span style={styles.badge}>{formatStatusLabel(sessionState.status)}</span>
+              <span style={styles.badge}>
+                {formatStatusLabel(sessionState.status)}
+              </span>
             </div>
 
             <div style={styles.infoCard}>
@@ -271,17 +332,6 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
                 Reload Session
               </button>
 
-              <button
-                onClick={startSession}
-                disabled={!sessionLoaded || !isCameraOn}
-                style={{
-                  ...styles.primaryButton,
-                  ...(!sessionLoaded || !isCameraOn ? styles.disabledButton : {}),
-                }}
-              >
-                Start Session
-              </button>
-
               <button onClick={pauseSession} style={styles.secondaryButton}>
                 Pause
               </button>
@@ -320,7 +370,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
                   builderStepCount: session?.steps.length ?? 0,
                   runtimeSessionTitle: sessionState.session?.title ?? null,
                   sessionStatus: sessionState.status,
-                  currentExercise: sessionState.currentItem?.exercise.title ?? null,
+                  currentExercise: sessionState.currentItem?.exercise?.title ?? null,
                   currentIndex: sessionState.progress.currentIndex,
                   totalExercises: sessionState.progress.totalExercises,
                   completedExerciseIds: sessionState.progress.completedExerciseIds,
