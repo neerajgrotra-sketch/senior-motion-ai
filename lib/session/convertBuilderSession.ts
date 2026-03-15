@@ -8,18 +8,6 @@ import {
   raiseBothHandsExercise,
 } from "../exercises/catalog";
 
-/**
- * Maps builder exercise ids to runtime exercise definitions.
- *
- * Important:
- * SessionBuilder currently emits:
- * - raise_right_hand
- * - raise_left_hand
- * - both_hands_up
- *
- * The previous version incorrectly used "raise_both_hands", which caused
- * the bilateral exercise to resolve to undefined and later crash the runner.
- */
 const exerciseMap: Record<string, ExerciseDefinition> = {
   raise_right_hand: raiseRightHandExercise,
   raise_left_hand: raiseLeftHandExercise,
