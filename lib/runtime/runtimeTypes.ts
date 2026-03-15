@@ -1,6 +1,5 @@
 // lib/runtime/runtimeTypes.ts
 
-import { PoseSide } from "../pose/poseTypes";
 import {
   ExerciseDefinition,
   ExerciseEvaluationResult,
@@ -16,13 +15,15 @@ export type RuntimeStatus =
   | "completed"
   | "error";
 
+export type RuntimeActiveSide = "left" | "right" | null;
+
 export interface RuntimeRepState {
   phase: ExerciseIntentPhase;
   repCount: number;
   lastRepTimestampMs: number | null;
   startedAtMs: number | null;
   updatedAtMs: number | null;
-  activeSide: PoseSide | null;
+  activeSide: RuntimeActiveSide;
 }
 
 export interface RuntimeExerciseState {
