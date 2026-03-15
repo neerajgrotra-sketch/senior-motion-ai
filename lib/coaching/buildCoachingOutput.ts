@@ -30,21 +30,16 @@ function speakForCode(code: string): boolean {
   }
 }
 
-/**
- * Small bias so movement guidance wins over posture correction when both
- * are present at similar priority. This helps avoid the UI getting stuck on
- * "Keep your torso upright" during the whole rep.
- */
 function coachingBias(code: string): number {
   switch (code) {
     case "good_rep":
       return 40;
     case "lift_higher":
       return 25;
-    case "lower_slowly":
-      return 18;
     case "hold_position":
-      return 15;
+      return 18;
+    case "lower_slowly":
+      return 14;
     case "reset_position":
       return 10;
     case "switch_side":
@@ -71,9 +66,7 @@ export function buildCoachingOutput(params: {
     };
   }
 
-  const dedupedCodes = [...new Set(coachingCodes)];
-
-  const matchedRules = dedupedCodes
+  const matchedRules = [...new Set(coachingCodes)]
     .map((code) => {
       const rule = exercise.coachingRules.find((r) => r.code === code);
       if (!rule) return null;
