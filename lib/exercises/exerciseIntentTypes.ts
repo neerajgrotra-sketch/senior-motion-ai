@@ -73,12 +73,17 @@ export type LiveIntentPhase =
   | string;
 
 export type LiveIntentState = {
-  phase: LiveIntentPhase;
+  exerciseId?: string;
+  phase?: LiveIntentPhase;
+  motionState?: string;
   startedAtMs?: number;
   updatedAtMs?: number;
   repCount?: number;
+  repInProgress?: boolean;
   confidence?: number;
   activeSide?: "left" | "right" | "bilateral" | null;
+  lastRepTimestampMs?: number | null;
+  matchedRules?: string[];
   debug?: Record<string, unknown>;
 };
 
