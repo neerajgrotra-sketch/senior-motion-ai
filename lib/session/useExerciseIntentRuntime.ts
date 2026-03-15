@@ -1,5 +1,8 @@
 import { useMemo, useRef, useState } from "react";
-import { evaluateExerciseIntent } from "../exercises/evaluateExerciseIntent";
+import {
+  createInitialIntentState,
+  evaluateExerciseIntent,
+} from "../exercises/evaluateExerciseIntent";
 import type {
   ExerciseIntentModel,
   IntentEvaluationResult,
@@ -29,6 +32,7 @@ export function useExerciseIntentRuntime(
 
   const [state, setState] = useState<LiveIntentState | null>(null);
   const stateRef = useRef<LiveIntentState | null>(null);
+  const lastTimestampRef = useRef<number | null>(null);
 
   const api = useMemo<UseExerciseIntentRuntimeResult>(() => {
     return {
@@ -36,20 +40,29 @@ export function useExerciseIntentRuntime(
 
       reset: () => {
         stateRef.current = null;
+        lastTimestampRef.current = null;
         setState(null);
       },
 
       evaluate: ({ landmarks, timestampMs }: EvaluateArgs): IntentEvaluationResult => {
+        const previousState =
+          stateRef.current ?? createInitialIntentState(exercise, timestampMs);
+
+        const previousTimestamp = lastTimestampRef.current ?? timestampMs;
+        const deltaMs = Math.max(0, timestampMs - previousTimestamp);
+
         const result = evaluateExerciseIntent({
           exercise,
           landmarks,
-          previousState: stateRef.current,
-          timestampMs,
+          previousState,
+          nowMs: timestampMs,
+          deltaMs,
         });
 
-        const nextState: LiveIntentState | null = result.nextState ?? null;
+        const nextState: LiveIntentState = result.nextState ?? previousState;
 
         stateRef.current = nextState;
+        lastTimestampRef.current = timestampMs;
         setState(nextState);
 
         return result;
