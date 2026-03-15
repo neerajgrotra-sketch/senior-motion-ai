@@ -76,13 +76,20 @@ export type LiveIntentState = {
   exerciseId?: string;
   phase?: LiveIntentPhase;
   motionState?: string;
+
   startedAtMs?: number;
   updatedAtMs?: number;
+
   repCount?: number;
   repInProgress?: boolean;
+  repStartedAtMs?: number | undefined;
+  reachedTargetAtMs?: number | undefined;
+  returnStartedAtMs?: number | undefined;
+  lastRepCompletedAtMs?: number | undefined;
+  lastRepTimestampMs?: number | null;
+
   confidence?: number;
   activeSide?: "left" | "right" | "bilateral" | null;
-  lastRepTimestampMs?: number | null;
   matchedRules?: string[];
   debug?: Record<string, unknown>;
 };
