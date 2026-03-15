@@ -115,7 +115,13 @@ export type ExerciseIntentModel = {
   id: string;
   name?: string;
   version?: string;
-  signalDefinitions: SignalDefinition[];
+
+  // legacy field name
+  signals: SignalDefinition[];
+
+  // newer/alternate field name
+  signalDefinitions?: SignalDefinition[];
+
   thresholds?: IntentThresholdRule[];
   transitions?: IntentTransitionRule[];
   metadata?: Record<string, unknown>;
