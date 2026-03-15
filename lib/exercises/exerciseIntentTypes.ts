@@ -119,6 +119,13 @@ export type ExerciseIntentModel = {
   thresholds?: IntentThresholdRule[];
   transitions?: IntentTransitionRule[];
   metadata?: Record<string, unknown>;
+  coaching?: {
+    intro?: string;
+    success?: string;
+    correction?: string;
+    error?: string;
+    [key: string]: unknown;
+  };
 };
 
 export type IntentEvaluationResult = {
