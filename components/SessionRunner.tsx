@@ -1,10 +1,26 @@
 "use client";
 
+/**
+ * SessionRunner.tsx
+ *
+ * Purpose
+ * - Render the current MVP exercise session screen
+ * - Keep camera / pose pipeline separate from session orchestration
+ * - Feed latest BiomechanicsFrame values into the session runner engine
+ * - Show current exercise, rep progress, coaching, and lightweight debug info
+ *
+ * Notes
+ * - This component uses the NEW architecture path:
+ *   usePosePipeline -> biomechanics frame -> session runner engine -> UI
+ * - It does NOT depend on the legacy intent-engine session hook.
+ * - The camera should be started once and remain active while exercises switch.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePosePipeline } from "../hooks/usePosePipeline";
 import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEngine";
 import { buildDemoSession } from "../lib/session/buildDemoSession";
-import type { SessionState } from "../lib/session/sessionTypes";
+import type { SessionRunnerState } from "../lib/session/sessionTypes";
 import type { RuntimeFrameResult } from "../lib/runtime/runtimeTypes";
 
 function formatStatusLabel(value: string): string {
@@ -27,7 +43,7 @@ export default function SessionRunner() {
   const engineRef = useRef(createSessionRunnerEngine());
 
   const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [sessionState, setSessionState] = useState<SessionState>(
+  const [sessionState, setSessionState] = useState<SessionRunnerState>(
     engineRef.current.getState(),
   );
   const [runtimeResult, setRuntimeResult] = useState<RuntimeFrameResult | null>(null);
@@ -79,8 +95,7 @@ export default function SessionRunner() {
   const currentExerciseTitle =
     sessionState.currentItem?.exercise.title ?? "No exercise loaded";
 
-  const currentRepCount =
-    runtimeResult?.exerciseState?.repState.repCount ?? 0;
+  const currentRepCount = runtimeResult?.exerciseState?.repState.repCount ?? 0;
 
   const currentRepTarget =
     sessionState.currentItem?.repTarget ??
@@ -93,7 +108,7 @@ export default function SessionRunner() {
       ? "Press Start Session when you are ready."
       : sessionState.status === "running"
         ? isRunning
-          ? "Tracking..."
+          ? "Tracking movement..."
           : "Camera is on. Waiting for pose pipeline..."
         : sessionState.status === "paused"
           ? "Session paused."
@@ -104,37 +119,52 @@ export default function SessionRunner() {
   const completedExercises = sessionState.progress.completedExerciseIds.length;
   const totalExercises = sessionState.progress.totalExercises;
 
+  const currentPhase = runtimeResult?.exerciseState?.repState.phase
+    ? formatStatusLabel(runtimeResult.exerciseState.repState.phase)
+    : "n/a";
+
   return (
-    <div className="w-full p-6">
+    <div className="min-h-screen w-full bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Session Runner</h1>
-          <p className="text-sm text-gray-600">
-            Persistent camera + pose pipeline + session engine.
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+            AI Physiotherapy Session
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Camera, pose tracking, exercise runtime, and live coaching.
           </p>
         </div>
 
         {pipelineError ? (
-          <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
             {pipelineError}
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-medium">Live Camera</h2>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.25fr_0.95fr]">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Live Camera</h2>
+                <p className="text-sm text-slate-500">
+                  Start once and keep tracking across the full session.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                   {detectorReady ? "Detector Ready" : "Loading Detector"}
                 </span>
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                   {isCameraOn ? "Camera Active" : "Camera Off"}
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  {isRunning ? "Pipeline Running" : "Pipeline Idle"}
                 </span>
               </div>
             </div>
 
-            <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+            <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
               <video
                 ref={videoRef}
                 autoPlay
@@ -142,99 +172,114 @@ export default function SessionRunner() {
                 playsInline
                 className="h-full w-full object-cover"
               />
+
+              {!isCameraOn ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-center text-slate-200">
+                  <div>
+                    <div className="text-lg font-medium">Camera is off</div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      Start camera to begin pose tracking
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-3">
               <button
                 onClick={() => void startCamera()}
                 disabled={!detectorReady}
-                className="rounded-xl border px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {detectorReady ? "Start Camera" : "Loading Pose Detector..."}
               </button>
 
               <button
                 onClick={stopCamera}
-                className="rounded-xl border px-4 py-2 text-sm font-medium"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
               >
                 Stop Camera
               </button>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-medium">Session Status</h2>
-              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs capitalize">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Session Guide</h2>
+                <p className="text-sm text-slate-500">
+                  Live exercise progress and coaching feedback.
+                </p>
+              </div>
+
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                 {formatStatusLabel(sessionState.status)}
               </span>
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-xl bg-gray-50 p-4">
-                <div className="text-xs uppercase tracking-wide text-gray-500">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-slate-500">
                   Current Exercise
                 </div>
-                <div className="mt-1 text-xl font-semibold">
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
                   {currentExerciseTitle}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
                     Reps
                   </div>
-                  <div className="mt-1 text-2xl font-semibold">
+                  <div className="mt-2 text-3xl font-semibold text-slate-900">
                     {currentRepCount} / {currentRepTarget}
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
                     Progress
                   </div>
-                  <div className="mt-1 text-2xl font-semibold">
+                  <div className="mt-2 text-3xl font-semibold text-slate-900">
                     {completedExercises} / {totalExercises}
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl bg-blue-50 p-4">
+              <div className="rounded-2xl bg-blue-50 p-4">
                 <div className="text-xs uppercase tracking-wide text-blue-700">
                   Coaching
                 </div>
-                <div className="mt-1 text-base font-medium text-blue-900">
+                <div className="mt-2 text-base font-medium text-blue-950">
                   {coachingMessage}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
                     Runtime Phase
                   </div>
-                  <div className="mt-1 text-base font-medium">
-                    {runtimeResult?.exerciseState?.repState.phase
-                      ? formatStatusLabel(runtimeResult.exerciseState.repState.phase)
-                      : "n/a"}
+                  <div className="mt-2 text-base font-medium text-slate-900">
+                    {currentPhase}
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
                     Pose Pipeline
                   </div>
-                  <div className="mt-1 text-base font-medium">
+                  <div className="mt-2 text-base font-medium text-slate-900">
                     {isRunning ? "Running" : isCameraOn ? "Camera on / waiting" : "Stopped"}
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3 pt-2">
                 <button
                   onClick={loadSession}
-                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
                 >
                   Load Demo Session
                 </button>
@@ -242,44 +287,46 @@ export default function SessionRunner() {
                 <button
                   onClick={startSession}
                   disabled={!sessionLoaded || !isCameraOn}
-                  className="rounded-xl border px-4 py-2 text-sm font-medium disabled:opacity-50"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Start Session
                 </button>
 
                 <button
                   onClick={pauseSession}
-                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
                 >
                   Pause
                 </button>
 
                 <button
                   onClick={resumeSession}
-                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
                 >
                   Resume
                 </button>
 
                 <button
                   onClick={abortSession}
-                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
                 >
                   Abort
                 </button>
               </div>
             </div>
-          </div>
+          </section>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4 shadow-sm">
-          <h3 className="text-lg font-medium">Debug Snapshot</h3>
-          <pre className="mt-3 overflow-auto rounded-xl bg-gray-50 p-4 text-xs">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">Debug Snapshot</h3>
+
+          <pre className="mt-4 overflow-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-800">
             {JSON.stringify(
               {
                 detectorReady,
                 isCameraOn,
                 isRunning,
+                sessionLoaded,
                 sessionStatus: sessionState.status,
                 currentExercise: sessionState.currentItem?.exercise.title ?? null,
                 currentIndex: sessionState.progress.currentIndex,
@@ -294,15 +341,14 @@ export default function SessionRunner() {
                   latestBiomechanicsFrame?.arms.left.verticalLiftNormalized ?? null,
                 rightLift:
                   latestBiomechanicsFrame?.arms.right.verticalLiftNormalized ?? null,
-                torsoLean:
-                  latestBiomechanicsFrame?.torso.trunkLeanDeg ?? null,
+                torsoLean: latestBiomechanicsFrame?.torso.trunkLeanDeg ?? null,
                 debug: runtimeResult?.debug ?? null,
               },
               null,
               2,
             )}
           </pre>
-        </div>
+        </section>
       </div>
     </div>
   );
