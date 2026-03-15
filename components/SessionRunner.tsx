@@ -45,7 +45,7 @@ function getExerciseInstructionCopy(currentExerciseLabel: string) {
     return {
       action: 'Raise both hands slowly.',
       continue: 'Good. Keep raising both hands.',
-      hold: 'Hold both hands up.',
+      hold: 'Hold both hands there.',
       lower: 'Lower both hands slowly.'
     };
   }
@@ -72,7 +72,7 @@ function getExerciseInstructionCopy(currentExerciseLabel: string) {
     return {
       action: 'Lift your knee slowly.',
       continue: 'Good. Keep lifting your knee.',
-      hold: 'Hold your knee up.',
+      hold: 'Hold your knee there.',
       lower: 'Lower your knee slowly.'
     };
   }
@@ -120,8 +120,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Raise either hand to begin.',
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Target ${targetReps} reps`,
-      status: 'waiting',
-      error: null as string | null
+      status: 'waiting'
     };
   }
 
@@ -129,8 +128,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Get into position.',
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • ${currentExerciseLabel}`,
-      status: 'precheck',
-      error: null as string | null
+      status: 'precheck'
     };
   }
 
@@ -138,8 +136,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Get ready.',
       subline: `Starting ${currentExerciseLabel}`,
-      status: 'countdown',
-      error: null as string | null
+      status: 'countdown'
     };
   }
 
@@ -147,8 +144,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Take a short rest.',
       subline: 'Recover before the next step',
-      status: 'rest',
-      error: null as string | null
+      status: 'rest'
     };
   }
 
@@ -156,8 +152,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Great job.',
       subline: 'Exercise completed successfully.',
-      status: 'complete',
-      error: null as string | null
+      status: 'complete'
     };
   }
 
@@ -165,8 +160,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Session complete.',
       subline: 'Excellent work today.',
-      status: 'complete',
-      error: null as string | null
+      status: 'complete'
     };
   }
 
@@ -174,8 +168,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Waiting for camera data.',
       subline: `Exercise ${currentStepIndex + 1} of ${totalSteps}`,
-      status: 'waiting',
-      error: null as string | null
+      status: 'waiting'
     };
   }
 
@@ -183,12 +176,11 @@ function getCoachMessage(params: {
     return {
       headline: 'Step into the frame.',
       subline: 'We need to see you clearly before we begin',
-      status: 'tracking',
-      error: 'no_person'
+      status: 'tracking'
     };
   }
 
-  const completed = debug.repCount ?? 0;
+  const completed = Math.min(debug.repCount ?? 0, targetReps);
   const holdMs = debug.holdMs ?? 0;
   const phaseName = debug.exercisePhase ?? 'idle';
   const runtimeHeadline =
@@ -201,8 +193,7 @@ function getCoachMessage(params: {
         holdTargetMs > 0
           ? `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps} • Hold ${targetHoldSeconds}s`
           : `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
-      status: 'ready',
-      error: null as string | null
+      status: 'ready'
     };
   }
 
@@ -213,8 +204,7 @@ function getCoachMessage(params: {
         holdTargetMs > 0
           ? `Reps ${completed}/${targetReps} • Hold target ${targetHoldSeconds}s`
           : `Reps ${completed}/${targetReps}`,
-      status: 'lifting',
-      error: null as string | null
+      status: 'lifting'
     };
   }
 
@@ -227,8 +217,7 @@ function getCoachMessage(params: {
         return {
           headline: instructionCopy.hold,
           subline: `${remainingSeconds}s remaining`,
-          status: 'holding',
-          error: null as string | null
+          status: 'holding'
         };
       }
     }
@@ -236,8 +225,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Great. Now lower slowly.',
       subline: `Reps ${completed}/${targetReps}`,
-      status: 'holding',
-      error: null as string | null
+      status: 'holding'
     };
   }
 
@@ -245,8 +233,7 @@ function getCoachMessage(params: {
     return {
       headline: instructionCopy.lower,
       subline: `Reps ${completed}/${targetReps}`,
-      status: 'lowering',
-      error: null as string | null
+      status: 'lowering'
     };
   }
 
@@ -254,8 +241,7 @@ function getCoachMessage(params: {
     return {
       headline: 'Great job. That is one rep.',
       subline: `Reps ${completed}/${targetReps}`,
-      status: 'rep_complete',
-      error: null as string | null
+      status: 'rep_complete'
     };
   }
 
@@ -263,16 +249,14 @@ function getCoachMessage(params: {
     return {
       headline: 'Please come back into view.',
       subline: 'We lost tracking for a moment',
-      status: 'tracking',
-      error: 'lost'
+      status: 'tracking'
     };
   }
 
   return {
     headline: runtimeHeadline ?? instructionCopy.action,
     subline: `Reps ${completed}/${targetReps}`,
-    status: 'active',
-    error: null as string | null
+    status: 'active'
   };
 }
 
@@ -344,8 +328,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
       return {
         headline: 'Get ready.',
         subline: '',
-        status: 'idle',
-        error: null as string | null
+        status: 'idle'
       };
     }
 
@@ -438,26 +421,6 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
 
   useEffect(() => {
     if (!currentStep) return;
-    if (runnerPhase !== 'active') return;
-    if (!latestDebug) return;
-    if (stepCompletionHandledRef.current) return;
-
-    // CRITICAL FIX:
-    // Ignore stale debug from a previous step.
-    if (latestDebug.exerciseId !== currentStep.exerciseId) return;
-
-    if (latestDebug.repCount >= currentStep.targetReps) {
-      stepCompletionHandledRef.current = true;
-      handleExerciseComplete({
-        completedReps: latestDebug.repCount,
-        sessionPeakLift: latestDebug.sessionPeakLift,
-        lastRepPeakLift: latestDebug.lastRepPeakLift
-      });
-    }
-  }, [runnerPhase, latestDebug, currentStep]);
-
-  useEffect(() => {
-    if (!currentStep) return;
     if (runnerPhase !== 'exercise_complete') return;
 
     const timer = window.setTimeout(() => {
@@ -504,6 +467,26 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     processLandmarks(landmarks);
   }
 
+  function maybeCompleteCurrentStep(debug: DebugState) {
+    if (!currentStep) return;
+    if (runnerPhase !== 'active') return;
+    if (stepCompletionHandledRef.current) return;
+
+    if (debug.repCount >= currentStep.targetReps) {
+      stepCompletionHandledRef.current = true;
+      handleExerciseComplete({
+        completedReps: currentStep.targetReps,
+        sessionPeakLift: debug.sessionPeakLift,
+        lastRepPeakLift: debug.lastRepPeakLift
+      });
+    }
+  }
+
+  function handleDebugStateChange(debug: DebugState) {
+    setLatestDebug(debug);
+    maybeCompleteCurrentStep(debug);
+  }
+
   function advanceToNextStep() {
     const isLast = currentStepIndex >= session.steps.length - 1;
 
@@ -521,17 +504,13 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     }
 
     resetIntentRuntime();
-    stepCompletionHandledRef.current = true; // temporarily lock until new step mounts
     setLatestDebug(null);
+    setGestureSignal({ detected: false, holdMs: 0 });
     setCurrentStepIndex((prev) => prev + 1);
     setRunnerPhase('precheck');
     setCountdownValue(3);
     setRestSecondsLeft(0);
-
-    // unlock after remount cycle
-    window.setTimeout(() => {
-      stepCompletionHandledRef.current = false;
-    }, 0);
+    stepCompletionHandledRef.current = false;
   }
 
   function handleExerciseComplete(result: {
@@ -577,6 +556,8 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
   }
 
   if (!currentStep || !currentExercise) return null;
+
+  const safeRepCount = Math.min(latestDebug?.repCount ?? 0, currentStep.targetReps);
 
   const nextExerciseLabel = session.steps[currentStepIndex + 1]
     ? EXERCISE_REGISTRY[session.steps[currentStepIndex + 1].exerciseId]?.label ?? 'Next Exercise'
@@ -624,8 +605,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
             </div>
 
             <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16, lineHeight: 1.5 }}>
-              Exercise {currentStepIndex + 1} of {session.steps.length} • Reps{' '}
-              {latestDebug?.repCount ?? 0}/{currentStep.targetReps}
+              Exercise {currentStepIndex + 1} of {session.steps.length} • Reps {safeRepCount}/{currentStep.targetReps}
             </div>
 
             <div style={coachMessageCardStyle}>
@@ -643,7 +623,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                   State: <strong>{latestDebug?.exercisePhase ?? 'idle'}</strong>
                 </div>
                 <div style={coachMetaChipStyle}>
-                  Reps: <strong>{latestDebug?.repCount ?? 0}</strong>
+                  Reps: <strong>{safeRepCount}</strong>
                 </div>
                 <div style={coachMetaChipStyle}>
                   Lift: <strong>{(latestDebug?.currentLiftNorm ?? 0).toFixed(3)}</strong>
@@ -654,7 +634,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
             <div style={coachFooterStyle}>
               <div style={{ color: '#94a3b8', fontSize: 13 }}>Session Progress</div>
               <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800 }}>
-                {latestDebug?.repCount ?? 0} / {currentStep.targetReps} reps completed
+                {safeRepCount} / {currentStep.targetReps} reps completed
               </div>
               <div style={{ marginTop: 8, color: '#93c5fd', fontSize: 15 }}>
                 Next: {nextExerciseLabel}
@@ -702,7 +682,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                             : undefined
               }
               exerciseEnabled={runnerPhase === 'active'}
-              onDebugStateChange={setLatestDebug}
+              onDebugStateChange={handleDebugStateChange}
               onControlGesture={setGestureSignal}
               onPoseLandmarksChange={handlePoseLandmarksChange}
             />
