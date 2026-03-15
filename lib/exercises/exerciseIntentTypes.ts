@@ -198,10 +198,17 @@ export type ExerciseIntentModel = {
 /* ------------------------------------------------ */
 
 export type IntentEvaluationResult = {
-  ok: boolean;
+  // legacy evaluator return shape
+  nextState?: LiveIntentState;
+  repCompleted?: boolean;
+  detectedErrorCode?: IntentErrorCode;
+  feedbackMessage?: string;
+
+  // alternate/common shape
+  ok?: boolean;
   errorCode?: IntentErrorCode;
-  state: LiveIntentState;
-  signals: Record<string, number>;
+  state?: LiveIntentState;
+  signals?: Record<string, number>;
   matchedRules?: string[];
   confidence?: number;
   debug?: Record<string, unknown>;
