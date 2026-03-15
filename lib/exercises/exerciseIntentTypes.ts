@@ -124,6 +124,7 @@ export type LegacyExerciseThresholds = {
   targetMin: number;
   holdDurationMs: number;
   minRepDurationMs: number;
+  controlledReturnMinMs: number;
 
   maxRepDurationMs?: number;
   returnMax?: number;
