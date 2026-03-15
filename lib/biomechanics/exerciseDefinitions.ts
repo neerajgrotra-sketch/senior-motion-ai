@@ -66,3 +66,70 @@ export const RAISE_RIGHT_HAND_DEFINITION: ExerciseDefinition = {
     }
   }
 };
+
+export const RAISE_LEFT_HAND_DEFINITION: ExerciseDefinition = {
+  id: 'raise_left_hand_v2',
+  label: 'Raise Left Hand',
+  allowedPostures: ['sitting', 'standing'],
+  side: 'left',
+
+  thresholds: {
+    targetLiftNorm: 0.55,
+    returnLiftNorm: 0.12,
+    wrongSideLiftNorm: 0.30,
+    maxTorsoLeanDeg: 15,
+    minHoldMs: 1200,
+    maxVelocityNorm: 0.02,
+    noResponseMs: 3000
+  },
+
+  phases: {
+    ready: [
+      { kind: 'posture', allowed: ['sitting', 'standing'] },
+      { signal: 'leftHandLiftNorm', op: '<=', value: 0.12 },
+      { signal: 'torsoLeanDeg', op: 'abs<=', value: 15 }
+    ],
+    ascentStart: [{ signal: 'leftHandLiftNorm', op: '>', value: 0.18 }],
+    peakReached: [{ signal: 'leftHandLiftNorm', op: '>=', value: 0.55 }],
+    returnReached: [{ signal: 'leftHandLiftNorm', op: '<=', value: 0.12 }]
+  },
+
+  errors: [
+    {
+      code: 'wrong_side',
+      when: [{ signal: 'rightHandLiftNorm', op: '>=', value: 0.30 }],
+      severity: 'high',
+      message: 'Use your left hand.'
+    },
+    {
+      code: 'trunk_compensation',
+      when: [{ signal: 'torsoLeanDeg', op: 'abs>', value: 15 }],
+      severity: 'high',
+      message: 'Keep your body upright.'
+    },
+    {
+      code: 'excessive_speed',
+      when: [{ signal: 'movementSpeedNorm', op: '>', value: 0.02 }],
+      severity: 'medium',
+      message: 'Move more slowly.'
+    }
+  ],
+
+  cues: {
+    intro: 'Raise your left hand slowly.',
+    ready: 'Get ready.',
+    ascend: 'Lift your left hand.',
+    hold: 'Hold it there.',
+    descend: 'Lower slowly.',
+    success: 'Great job.',
+    corrections: {
+      wrong_side: 'Use your left hand.',
+      insufficient_range: 'Lift a little higher.',
+      insufficient_hold: 'Hold it a bit longer.',
+      incomplete_return: 'Lower all the way down.',
+      trunk_compensation: 'Keep your body upright.',
+      excessive_speed: 'Move more slowly.',
+      no_response: 'Start when you are ready.'
+    }
+  }
+};
