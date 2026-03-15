@@ -160,6 +160,12 @@ export type ExerciseIntentModel = {
   name?: string;
   version?: string;
 
+  objective?: {
+    goal?: string;
+    targetJointArea?: string;
+    [key: string]: string | undefined;
+  };
+
   signals: SignalDefinition[];
   signalDefinitions?: SignalDefinition[];
 
@@ -214,7 +220,6 @@ export type ExerciseIntentModel = {
     [key: string]: string | undefined;
   };
 };
-
 /* ------------------------------------------------ */
 /* Evaluation Result */
 /* ------------------------------------------------ */
