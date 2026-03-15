@@ -65,6 +65,7 @@ export type IntentErrorCode =
   | "invalid_model"
   | "trunk_lean"
   | "wrong_side"
+  | "no_hold"
   | "unknown";
 
 /* ------------------------------------------------ */
@@ -176,6 +177,7 @@ export type ExerciseIntentModel = {
     detectAsymmetry?: boolean;
     detectLowConfidence?: boolean;
     detectWrongSide?: boolean;
+    detectNoHold?: boolean;
     [key: string]: boolean | undefined;
   };
 
@@ -192,6 +194,7 @@ export type ExerciseIntentModel = {
     lowConfidence?: string;
     asymmetry?: string;
     wrongSide?: string;
+    noHold?: string;
     reset?: string;
     [key: string]: string | undefined;
   };
