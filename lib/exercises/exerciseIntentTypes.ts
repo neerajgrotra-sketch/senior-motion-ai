@@ -186,6 +186,13 @@ export type ExerciseIntentModel = {
     [key: string]: boolean | undefined;
   };
 
+  presentation: {
+    targetReps: number;
+    title?: string;
+    description?: string;
+    [key: string]: string | number | undefined;
+  };
+
   transitions?: IntentTransitionRule[];
 
   metadata?: Record<string, unknown>;
@@ -202,6 +209,7 @@ export type ExerciseIntentModel = {
     noHold?: string;
     insufficientRange?: string;
     tooFast?: string;
+    completedExercise?: string;
     reset?: string;
     [key: string]: string | undefined;
   };
