@@ -114,6 +114,7 @@ function getCoachMessage(params: {
   } = params;
 
   const instructionCopy = getExerciseInstructionCopy(currentExerciseLabel);
+  const holdTargetMs = Math.max(0, Math.round((targetHoldSeconds ?? 0) * 1000));
 
   if (phase === 'session_intro') {
     return {
@@ -190,14 +191,9 @@ function getCoachMessage(params: {
   const completed = debug.repCount ?? 0;
   const holdMs = debug.holdMs ?? 0;
   const phaseName = debug.exercisePhase ?? 'idle';
-  const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
-
   const runtimeHeadline =
     debug.statusText && debug.statusText.trim().length > 0 ? debug.statusText : null;
 
-  // IMPORTANT:
-  // Phase-based guidance must dominate the UI.
-  // Runtime text is only used in idle/ready or as fallback.
   if (phaseName === 'idle') {
     const lowerToStart =
       runtimeHeadline &&
@@ -206,7 +202,10 @@ function getCoachMessage(params: {
 
     return {
       headline: lowerToStart ? runtimeHeadline : instructionCopy.action,
-      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
+      subline:
+        holdTargetMs > 0
+          ? `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps} • Hold ${targetHoldSeconds}s`
+          : `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
       status: 'ready',
       error: null as string | null
     };
@@ -215,20 +214,28 @@ function getCoachMessage(params: {
   if (phaseName === 'moving_up') {
     return {
       headline: instructionCopy.continue,
-      subline: `Reps ${completed}/${targetReps}`,
+      subline:
+        holdTargetMs > 0
+          ? `Reps ${completed}/${targetReps} • Hold target ${targetHoldSeconds}s`
+          : `Reps ${completed}/${targetReps}`,
       status: 'lifting',
       error: null as string | null
     };
   }
 
   if (phaseName === 'holding') {
-    if (holdTargetMs > 0 && holdMs < holdTargetMs) {
-      return {
-        headline: instructionCopy.hold,
-        subline: `${Math.ceil((holdTargetMs - holdMs) / 1000)}s remaining`,
-        status: 'holding',
-        error: null as string | null
-      };
+    if (holdTargetMs > 0) {
+      const remainingMs = Math.max(0, holdTargetMs - holdMs);
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
+
+      if (remainingMs > 0) {
+        return {
+          headline: instructionCopy.hold,
+          subline: `${remainingSeconds}s remaining`,
+          status: 'holding',
+          error: null as string | null
+        };
+      }
     }
 
     return {
@@ -679,15 +686,15 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
                     : readiness.message
                   : runnerPhase === 'precheck'
                     ? readiness.message
-                  : runnerPhase === 'countdown'
-                    ? `Starting in ${countdownValue}`
-                  : runnerPhase === 'exercise_complete'
-                    ? 'Exercise completed successfully. Well done!'
-                  : runnerPhase === 'rest'
-                    ? `Rest: ${restSecondsLeft}s`
-                  : runnerPhase === 'session_complete'
-                    ? 'Session completed successfully. Great work today!'
-                  : undefined
+                    : runnerPhase === 'countdown'
+                      ? `Starting in ${countdownValue}`
+                      : runnerPhase === 'exercise_complete'
+                        ? 'Exercise completed successfully. Well done!'
+                        : runnerPhase === 'rest'
+                          ? `Rest: ${restSecondsLeft}s`
+                          : runnerPhase === 'session_complete'
+                            ? 'Session completed successfully. Great work today!'
+                            : undefined
               }
               exerciseEnabled={runnerPhase === 'active'}
               onDebugStateChange={setLatestDebug}
