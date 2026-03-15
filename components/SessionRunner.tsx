@@ -1,22 +1,5 @@
 "use client";
 
-/**
- * SessionRunner.tsx
- *
- * Purpose
- * - Render the current exercise runner screen
- * - Use the new pose -> biomechanics -> runtime -> session engine path
- * - Accept a builder session from app/page.tsx
- * - Auto-start camera when the user starts the session
- * - Stay defensive if any exercise mapping is missing
- *
- * Notes
- * - This keeps the current runner architecture intact
- * - It falls back to the demo session if no builder session is provided
- * - onAbort returns to the builder
- * - onFinish is accepted for future wiring, but not yet fully emitted
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePosePipeline } from "../hooks/usePosePipeline";
 import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEngine";
@@ -64,12 +47,14 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
   const [runtimeResult, setRuntimeResult] = useState<RuntimeFrameResult | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [hasFinished, setHasFinished] = useState(false);
 
   const loadSession = useCallback(() => {
     engineRef.current.loadSession(runtimeSession);
     setSessionLoaded(true);
     setSessionState(engineRef.current.getState());
     setRuntimeResult(null);
+    setHasFinished(false);
   }, [runtimeSession]);
 
   const startSession = useCallback(async () => {
@@ -123,41 +108,35 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
     setRuntimeResult(result.runtimeResult);
     setSessionState(result.sessionState);
 
-    if (result.justCompletedSession && onFinish) {
+    if (result.justCompletedSession && onFinish && !hasFinished) {
       const finishedAt = Date.now();
-      const startedAt =
-        sessionState.progress.sessionStartedAtMs ?? finishedAt;
-
-      const fallbackSessionName =
-        session?.name?.trim() || runtimeSession.title || "Session";
+      const startedAt = result.sessionState.progress.sessionStartedAtMs ?? finishedAt;
 
       const resultPayload: SessionResult = {
-        sessionName: fallbackSessionName,
+        sessionName: session?.name?.trim() || runtimeSession.title || "Session",
         startedAt,
         finishedAt,
         totalDurationMs: Math.max(0, finishedAt - startedAt),
-        steps:
-          runtimeSession.items.map((item) => ({
-            stepId: item.id,
-            label: item.exercise?.title ?? item.exerciseId,
-            targetReps: item.repTarget,
-            completedReps:
-              item.id === result.sessionState.currentItem?.id
-                ? result.runtimeResult?.exerciseState?.repState.repCount ?? 0
-                : item.repTarget,
-            requiredPosture: "either",
-            postureAtStart: "unknown",
-            targetHoldSeconds: Math.round((item.holdMs ?? 0) / 1000),
-            restSeconds: Math.round((item.restAfterMs ?? 0) / 1000),
-            sessionPeakLift: 0,
-            lastRepPeakLift: null,
-            success: true,
-          })) ?? [],
+        steps: runtimeSession.items.map((item) => ({
+          stepId: item.id,
+          exerciseId: item.exerciseId,
+          label: item.exercise?.title ?? item.exerciseId,
+          targetReps: item.repTarget,
+          completedReps: item.repTarget,
+          targetHoldSeconds: Math.round((item.holdMs ?? 0) / 1000),
+          restSeconds: Math.round((item.restAfterMs ?? 0) / 1000),
+          requiredPosture: "either",
+          postureAtStart: "unknown",
+          sessionPeakLift: 0,
+          lastRepPeakLift: null,
+          success: true,
+        })),
       };
 
+      setHasFinished(true);
       onFinish(resultPayload);
     }
-  }, [latestBiomechanicsFrame, onFinish, runtimeSession, session, sessionState.progress.sessionStartedAtMs]);
+  }, [latestBiomechanicsFrame, onFinish, hasFinished, runtimeSession, session]);
 
   const currentExerciseTitle =
     sessionState.currentItem?.exercise?.title ?? "No exercise loaded";
@@ -192,8 +171,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
     ? formatStatusLabel(runtimeResult.exerciseState.repState.phase)
     : "n/a";
 
-  const beginDisabled =
-    !detectorReady || !sessionLoaded || isStartingSession;
+  const beginDisabled = !detectorReady || !sessionLoaded || isStartingSession;
 
   return (
     <div style={styles.page}>
@@ -253,7 +231,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
 
             <div style={styles.buttonRow}>
               <button
-                onClick={startSession}
+                onClick={() => void startSession()}
                 disabled={beginDisabled}
                 style={{
                   ...styles.primaryButton,
@@ -282,9 +260,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
                 </p>
               </div>
 
-              <span style={styles.badge}>
-                {formatStatusLabel(sessionState.status)}
-              </span>
+              <span style={styles.badge}>{formatStatusLabel(sessionState.status)}</span>
             </div>
 
             <div style={styles.infoCard}>
