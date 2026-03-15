@@ -429,15 +429,19 @@ export default function PoseTrackerPage({
     }
   }, [releaseMediaResources, resetRuntimeState, exerciseDefinition, clearCanvas]);
 
-  useEffect(() => {
-    if (autoStartedRef.current) return;
-    autoStartedRef.current = true;
-    startCamera();
+useEffect(() => {
+  if (autoStartedRef.current) return;
+  autoStartedRef.current = true;
 
-    return () => {
-      stopCamera();
-    };
-  }, [startCamera, stopCamera]);
+  void startCamera();
+
+  return () => {
+    releaseMediaResources();
+    clearCanvas();
+  };
+  // intentionally mount-only: keep camera alive across exercise changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   function handleToggleAutoFraming() {
     setAutoFramingEnabled((prev) => {
