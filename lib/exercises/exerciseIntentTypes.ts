@@ -1,15 +1,41 @@
 // lib/exercises/exerciseIntentTypes.ts
 
-import type { PoseFrame, NormalizedPoseKeypoint, PoseLandmarkName } from "../pose/poseTypes";
+import type {
+  NormalizedPoseKeypoint,
+  PoseFrame,
+  PoseLandmarkName,
+} from "../pose/poseTypes";
 
 /**
- * Legacy compatibility type.
- * Old components such as PoseTrackerPage.tsx may still import PoseLandmarks.
- * In the new architecture, landmarks live on PoseFrame["keypoints"].
+ * Legacy compatibility layer for older intent/exercise files.
+ * New architecture uses pose/poseTypes.ts as the source of truth.
  */
+
+export type LandmarkName = PoseLandmarkName;
+
+export type PosePoint = {
+  x: number;
+  y: number;
+  z?: number;
+  score?: number;
+  visibility?: number;
+};
+
 export type PoseLandmarks = Record<PoseLandmarkName, NormalizedPoseKeypoint>;
 
-/**
- * Optional helper alias for legacy code that wants a full normalized pose object.
- */
 export type NormalizedPoseLandmarks = PoseFrame["keypoints"];
+
+export type SignalDefinition = {
+  key: string;
+  label?: string;
+  description?: string;
+};
+
+export type IntentSignalValue =
+  | number
+  | boolean
+  | string
+  | null
+  | undefined;
+
+export type IntentSignalMap = Record<string, IntentSignalValue>;
