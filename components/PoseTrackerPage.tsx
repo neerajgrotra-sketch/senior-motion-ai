@@ -75,8 +75,6 @@ type RuntimeStats = {
 };
 
 function getDefinitionForExerciseId(_exerciseId?: string): ExerciseDefinition {
-  // Temporary mapping while migrating to the new data-driven engine.
-  // Extend this switch as you add more definitions.
   return RAISE_RIGHT_HAND_DEFINITION;
 }
 
@@ -491,10 +489,7 @@ export default function PoseTrackerPage({
 
           onPoseLandmarksChangeRef.current?.(intentLandmarks);
 
-          const {
-            signals,
-            nextPreviousFrame
-          } = extractBiomechanicsSignals({
+          const { signals, nextPreviousFrame } = extractBiomechanicsSignals({
             track: smoothedPose,
             timestamp: ts,
             previousFrame: previousFrameRef.current,
@@ -507,10 +502,14 @@ export default function PoseTrackerPage({
 
           previousFrameRef.current = nextPreviousFrame;
 
-          const eitherHandUp = signals.leftHandAboveShoulder || signals.rightHandAboveShoulder;
+          // More forgiving session-start gesture:
+          // do not require postureStable, and do not require full "above shoulder".
+          const eitherHandUp =
+            signals.leftHandLiftNorm > 0.18 || signals.rightHandLiftNorm > 0.18;
+
           let gestureHoldMs = 0;
 
-          if (eitherHandUp && signals.postureStable) {
+          if (eitherHandUp) {
             if (startGestureSinceRef.current == null) {
               startGestureSinceRef.current = ts;
             }
