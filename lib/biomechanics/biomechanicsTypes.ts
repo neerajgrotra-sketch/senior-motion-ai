@@ -38,7 +38,7 @@ export interface SegmentMeasurement {
 }
 
 export interface ArmMetrics {
-  side: PoseSide;
+  side: "left" | "right";
   shoulderFlexionDeg: number | null;
   elbowFlexionDeg: number | null;
   wristAboveShoulder: boolean;
