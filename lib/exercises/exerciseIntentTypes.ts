@@ -166,6 +166,13 @@ export type ExerciseIntentModel = {
     [key: string]: string | undefined;
   };
 
+  landmarks?: {
+    tracked?: LandmarkName[];
+    required?: LandmarkName[];
+    primarySide?: "left" | "right" | "bilateral";
+    [key: string]: LandmarkName[] | string | undefined;
+  };
+
   signals: SignalDefinition[];
   signalDefinitions?: SignalDefinition[];
 
