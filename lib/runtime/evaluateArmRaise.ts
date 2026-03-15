@@ -18,17 +18,24 @@ function getMode(exercise: ExerciseDefinition): ArmRaiseMode {
   return "bilateral";
 }
 
-function enoughLift(lift: number | null, shoulderDeg: number | null) {
-  if (lift !== null && lift > 0.35) return true;
-  if (shoulderDeg !== null && shoulderDeg > 60) return true;
+function enoughLift(lift: number | null, shoulderDeg: number | null): boolean {
+  if (typeof lift === "number" && lift > 0.35) return true;
+  if (typeof shoulderDeg === "number" && shoulderDeg > 60) return true;
   return false;
 }
 
-export function evaluateArmRaise(
-  context: ExerciseEvaluationContext
-): ExerciseEvaluationResult {
+function velocityUp(value: number | null | undefined): boolean {
+  return typeof value === "number" && value > 0.02;
+}
 
-  const { exercise, frame, phase, lastRepTimestampMs } = context;
+function velocityDown(value: number | null | undefined): boolean {
+  return typeof value === "number" && value < -0.02;
+}
+
+export function evaluateArmRaise(
+  context: ExerciseEvaluationContext,
+): ExerciseEvaluationResult {
+  const { exercise, frame, phase } = context;
 
   const mode = getMode(exercise);
 
@@ -45,11 +52,11 @@ export function evaluateArmRaise(
   const leftUp = enoughLift(leftLift, leftShoulder);
   const rightUp = enoughLift(rightLift, rightShoulder);
 
-  const leftMovingUp = frame.arms.left.movementVelocity > 0.02;
-  const rightMovingUp = frame.arms.right.movementVelocity > 0.02;
+  const leftMovingUp = velocityUp(frame.arms.left.movementVelocity);
+  const rightMovingUp = velocityUp(frame.arms.right.movementVelocity);
 
-  const leftMovingDown = frame.arms.left.movementVelocity < -0.02;
-  const rightMovingDown = frame.arms.right.movementVelocity < -0.02;
+  const leftMovingDown = velocityDown(frame.arms.left.movementVelocity);
+  const rightMovingDown = velocityDown(frame.arms.right.movementVelocity);
 
   const leftStart = leftLift < 0.12;
   const rightStart = rightLift < 0.12;
@@ -57,61 +64,48 @@ export function evaluateArmRaise(
   let nextPhase: ExerciseIntentPhase = phase;
 
   if (mode === "right") {
-
     if (phase === "idle" && rightStart) nextPhase = "ready";
-
     else if (phase === "ready" && rightMovingUp) nextPhase = "moving_up";
-
     else if (phase === "moving_up" && rightUp) nextPhase = "at_top";
-
     else if (phase === "at_top" && rightMovingDown) nextPhase = "moving_down";
-
     else if (phase === "moving_down" && rightStart) nextPhase = "rep_complete";
-
   }
 
   if (mode === "left") {
-
     if (phase === "idle" && leftStart) nextPhase = "ready";
-
     else if (phase === "ready" && leftMovingUp) nextPhase = "moving_up";
-
     else if (phase === "moving_up" && leftUp) nextPhase = "at_top";
-
     else if (phase === "at_top" && leftMovingDown) nextPhase = "moving_down";
-
     else if (phase === "moving_down" && leftStart) nextPhase = "rep_complete";
-
   }
 
   if (mode === "bilateral") {
-
     const bothUp = leftUp && rightUp;
     const bothStart = leftStart && rightStart;
 
     if (phase === "idle" && bothStart) nextPhase = "ready";
-
-    else if (phase === "ready" && (leftMovingUp || rightMovingUp))
+    else if (phase === "ready" && (leftMovingUp || rightMovingUp)) {
       nextPhase = "moving_up";
-
-    else if (phase === "moving_up" && bothUp)
+    } else if (phase === "moving_up" && bothUp) {
       nextPhase = "at_top";
-
-    else if (phase === "at_top" && (leftMovingDown || rightMovingDown))
+    } else if (phase === "at_top" && (leftMovingDown || rightMovingDown)) {
       nextPhase = "moving_down";
-
-    else if (phase === "moving_down" && bothStart)
+    } else if (phase === "moving_down" && bothStart) {
       nextPhase = "rep_complete";
-
+    }
   }
 
   const repJustCompleted = nextPhase === "rep_complete";
+
+  const activeSide: PoseSide | null =
+    mode === "left" ? "left" : mode === "right" ? "right" : null;
 
   const formFlags: ExerciseFormFlags = {
     goodPosture,
     enoughLift: leftUp || rightUp,
     elbowAcceptable: true,
-    movementDetected: true,
+    movementDetected:
+      leftMovingUp || rightMovingUp || leftMovingDown || rightMovingDown || leftUp || rightUp,
     bodyVisible: true,
   };
 
@@ -120,7 +114,7 @@ export function evaluateArmRaise(
     phase: nextPhase,
     repIncrement: repJustCompleted ? 1 : 0,
     repJustCompleted,
-    activeSide: mode === "left" ? "left" : mode === "right" ? "right" : null,
+    activeSide,
     formFlags,
     confidence: 0.9,
     coachingCodes: [],
@@ -130,6 +124,10 @@ export function evaluateArmRaise(
       leftLift,
       rightLift,
       torsoLean,
+      leftMovingUp,
+      rightMovingUp,
+      leftMovingDown,
+      rightMovingDown,
     },
   };
 }
