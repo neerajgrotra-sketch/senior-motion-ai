@@ -1,133 +1,100 @@
-import type { PoseLandmarks } from '../exercises/exerciseIntentTypes'
+import type { PoseLandmarks, LandmarkName } from "../exercises/exerciseIntentTypes";
+import type { NormalizedPoseKeypoint, PoseLandmarkName } from "./poseTypes";
 
-type TrackKeypoint = {
-  x: number
-  y: number
-  z?: number
-  score?: number
+type TrackKeypointLike = {
+  x: number;
+  y: number;
+  z?: number;
+  score?: number;
+  visibility?: number;
+};
+
+type TrackKeypointMap = Partial<Record<PoseLandmarkName, TrackKeypointLike>>;
+
+const ALL_LANDMARK_NAMES: PoseLandmarkName[] = [
+  "nose",
+  "left_eye_inner",
+  "left_eye",
+  "left_eye_outer",
+  "right_eye_inner",
+  "right_eye",
+  "right_eye_outer",
+  "left_ear",
+  "right_ear",
+  "mouth_left",
+  "mouth_right",
+  "left_shoulder",
+  "right_shoulder",
+  "left_elbow",
+  "right_elbow",
+  "left_wrist",
+  "right_wrist",
+  "left_pinky",
+  "right_pinky",
+  "left_index",
+  "right_index",
+  "left_thumb",
+  "right_thumb",
+  "left_hip",
+  "right_hip",
+  "left_knee",
+  "right_knee",
+  "left_ankle",
+  "right_ankle",
+  "left_heel",
+  "right_heel",
+  "left_foot_index",
+  "right_foot_index",
+];
+
+function buildMissingKeypoint(name: PoseLandmarkName): NormalizedPoseKeypoint {
+  return {
+    name,
+    x: 0,
+    y: 0,
+    z: 0,
+    visibility: 0,
+    present: false,
+  };
 }
 
-type TrackKeypointMap = Record<string, TrackKeypoint | undefined>
+function buildMappedKeypoint(
+  name: PoseLandmarkName,
+  keypoint?: TrackKeypointLike,
+): NormalizedPoseKeypoint {
+  if (!keypoint) {
+    return buildMissingKeypoint(name);
+  }
+
+  return {
+    name,
+    x: keypoint.x,
+    y: keypoint.y,
+    z: keypoint.z ?? 0,
+    visibility: keypoint.visibility ?? keypoint.score ?? 0,
+    present: true,
+  };
+}
 
 export function mapTrackKeypointsToIntentLandmarks(
   keypoints: TrackKeypointMap,
 ): PoseLandmarks {
-  return {
-    nose: keypoints.nose
-      ? {
-          x: keypoints.nose.x,
-          y: keypoints.nose.y,
-          z: keypoints.nose.z,
-          score: keypoints.nose.score,
-        }
-      : undefined,
+  const result = {} as PoseLandmarks;
 
-    left_shoulder: keypoints.leftShoulder
-      ? {
-          x: keypoints.leftShoulder.x,
-          y: keypoints.leftShoulder.y,
-          z: keypoints.leftShoulder.z,
-          score: keypoints.leftShoulder.score,
-        }
-      : undefined,
-
-    right_shoulder: keypoints.rightShoulder
-      ? {
-          x: keypoints.rightShoulder.x,
-          y: keypoints.rightShoulder.y,
-          z: keypoints.rightShoulder.z,
-          score: keypoints.rightShoulder.score,
-        }
-      : undefined,
-
-    left_elbow: keypoints.leftElbow
-      ? {
-          x: keypoints.leftElbow.x,
-          y: keypoints.leftElbow.y,
-          z: keypoints.leftElbow.z,
-          score: keypoints.leftElbow.score,
-        }
-      : undefined,
-
-    right_elbow: keypoints.rightElbow
-      ? {
-          x: keypoints.rightElbow.x,
-          y: keypoints.rightElbow.y,
-          z: keypoints.rightElbow.z,
-          score: keypoints.rightElbow.score,
-        }
-      : undefined,
-
-    left_wrist: keypoints.leftWrist
-      ? {
-          x: keypoints.leftWrist.x,
-          y: keypoints.leftWrist.y,
-          z: keypoints.leftWrist.z,
-          score: keypoints.leftWrist.score,
-        }
-      : undefined,
-
-    right_wrist: keypoints.rightWrist
-      ? {
-          x: keypoints.rightWrist.x,
-          y: keypoints.rightWrist.y,
-          z: keypoints.rightWrist.z,
-          score: keypoints.rightWrist.score,
-        }
-      : undefined,
-
-    left_hip: keypoints.leftHip
-      ? {
-          x: keypoints.leftHip.x,
-          y: keypoints.leftHip.y,
-          z: keypoints.leftHip.z,
-          score: keypoints.leftHip.score,
-        }
-      : undefined,
-
-    right_hip: keypoints.rightHip
-      ? {
-          x: keypoints.rightHip.x,
-          y: keypoints.rightHip.y,
-          z: keypoints.rightHip.z,
-          score: keypoints.rightHip.score,
-        }
-      : undefined,
-
-    left_knee: keypoints.leftKnee
-      ? {
-          x: keypoints.leftKnee.x,
-          y: keypoints.leftKnee.y,
-          z: keypoints.leftKnee.z,
-          score: keypoints.leftKnee.score,
-        }
-      : undefined,
-
-    right_knee: keypoints.rightKnee
-      ? {
-          x: keypoints.rightKnee.x,
-          y: keypoints.rightKnee.y,
-          z: keypoints.rightKnee.z,
-          score: keypoints.rightKnee.score,
-        }
-      : undefined,
-
-    left_ankle: keypoints.leftAnkle
-      ? {
-          x: keypoints.leftAnkle.x,
-          y: keypoints.leftAnkle.y,
-          z: keypoints.leftAnkle.z,
-          score: keypoints.leftAnkle.score,
-        }
-      : undefined,
-
-    right_ankle: keypoints.rightAnkle
-      ? {
-          x: keypoints.rightAnkle.x,
-          y: keypoints.rightAnkle.y,
-          z: keypoints.rightAnkle.z,
-          score: keypoints.rightAnkle.score,
-        }
-      : undefined,
+  for (const name of ALL_LANDMARK_NAMES) {
+    result[name] = buildMappedKeypoint(name, keypoints[name]);
   }
+
+  return result;
+}
+
+/**
+ * Optional alias for older callers that pass a looser record shape.
+ */
+export function mapTrackKeypointsToLandmarks(
+  keypoints: Partial<Record<LandmarkName, TrackKeypointLike>>,
+): PoseLandmarks {
+  return mapTrackKeypointsToIntentLandmarks(
+    keypoints as Partial<Record<PoseLandmarkName, TrackKeypointLike>>,
+  );
 }
