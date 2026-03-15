@@ -1,5 +1,3 @@
-// lib/exercises/exerciseIntentTypes.ts
-
 import type {
   NormalizedPoseKeypoint,
   PoseFrame,
@@ -7,9 +5,13 @@ import type {
 } from "../pose/poseTypes";
 
 /**
- * Legacy compatibility layer for old intent-engine and PoseTrackerPage files.
- * New architecture should use pose/poseTypes.ts directly.
+ * Legacy compatibility layer for the old exercise intent engine.
+ * The new biomechanics architecture should eventually replace this.
  */
+
+/* ------------------------------------------------ */
+/* Pose Types */
+/* ------------------------------------------------ */
 
 export type LandmarkName = PoseLandmarkName;
 
@@ -21,12 +23,13 @@ export type PosePoint = {
   visibility?: number;
 };
 
-/**
- * This is the missing export causing the current build error.
- */
 export type PoseLandmarks = Record<PoseLandmarkName, NormalizedPoseKeypoint>;
 
 export type NormalizedPoseLandmarks = PoseFrame["keypoints"];
+
+/* ------------------------------------------------ */
+/* Signals */
+/* ------------------------------------------------ */
 
 export type SignalType =
   | "relative_y"
@@ -49,6 +52,10 @@ export type SignalDefinition = {
 export type IntentSignalValue = number;
 export type IntentSignalMap = Record<string, number>;
 
+/* ------------------------------------------------ */
+/* Errors */
+/* ------------------------------------------------ */
+
 export type IntentErrorCode =
   | "none"
   | "missing_pose"
@@ -58,6 +65,10 @@ export type IntentErrorCode =
   | "invalid_model"
   | "trunk_lean"
   | "unknown";
+
+/* ------------------------------------------------ */
+/* Runtime State */
+/* ------------------------------------------------ */
 
 export type LiveIntentPhase =
   | "idle"
@@ -80,34 +91,29 @@ export type LiveIntentState = {
 
   repCount?: number;
   repInProgress?: boolean;
-  repStartedAtMs?: number | undefined;
-  reachedTargetAtMs?: number | undefined;
-  returnStartedAtMs?: number | undefined;
-  lastRepCompletedAtMs?: number | undefined;
+  repStartedAtMs?: number;
+  reachedTargetAtMs?: number;
+  returnStartedAtMs?: number;
+  lastRepCompletedAtMs?: number;
   lastRepTimestampMs?: number | null;
 
   feedbackMessage?: string;
+
   latestSignals?: Record<string, number>;
-  lastErrorCode?: IntentErrorCode | undefined;
+  lastErrorCode?: IntentErrorCode;
+
   completed?: boolean;
 
   confidence?: number;
   activeSide?: "left" | "right" | "bilateral" | null;
+
   matchedRules?: string[];
   debug?: Record<string, unknown>;
 };
 
-export type IntentThresholdRule = {
-  signalId: string;
-  operator?: ">" | ">=" | "<" | "<=" | "==" | "!=";
-  value: number | boolean | string;
-};
-
-export type IntentTransitionRule = {
-  from: string;
-  to: string;
-  when?: IntentThresholdRule[];
-};
+/* ------------------------------------------------ */
+/* Thresholds */
+/* ------------------------------------------------ */
 
 export type LegacyExerciseThresholds = {
   startMax?: number;
@@ -122,6 +128,26 @@ export type LegacyExerciseThresholds = {
   maxTrunkLeanDeg?: number;
   [key: string]: number | undefined;
 };
+
+/* ------------------------------------------------ */
+/* Rules */
+/* ------------------------------------------------ */
+
+export type IntentThresholdRule = {
+  signalId: string;
+  operator?: ">" | ">=" | "<" | "<=" | "==" | "!=";
+  value: number | boolean | string;
+};
+
+export type IntentTransitionRule = {
+  from: string;
+  to: string;
+  when?: IntentThresholdRule[];
+};
+
+/* ------------------------------------------------ */
+/* Exercise Intent Model */
+/* ------------------------------------------------ */
 
 export type ExerciseIntentModel = {
   id: string;
@@ -151,15 +177,25 @@ export type ExerciseIntentModel = {
   };
 
   transitions?: IntentTransitionRule[];
+
   metadata?: Record<string, unknown>;
+
   coaching: {
     intro?: string;
     success?: string;
     correction?: string;
     error?: string;
-    [key: string]: unknown;
+    trunkLean?: string;
+    lowConfidence?: string;
+    asymmetry?: string;
+    reset?: string;
+    [key: string]: string | undefined;
   };
 };
+
+/* ------------------------------------------------ */
+/* Evaluation Result */
+/* ------------------------------------------------ */
 
 export type IntentEvaluationResult = {
   ok: boolean;
