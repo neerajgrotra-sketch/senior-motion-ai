@@ -1,1025 +1,457 @@
-'use client';
+// components/SessionRunner.tsx
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import PoseTrackerPage from './PoseTrackerPage';
-import { EXERCISE_REGISTRY } from '../lib/exercises/exerciseRegistry';
-import { rightArmRaiseIntent } from '../lib/exercises/rightArmRaiseIntent';
-import { leftArmRaiseIntent } from '../lib/exercises/leftArmRaiseIntent';
-import { seatedKneeLiftIntent } from '../lib/exercises/seatedKneeLiftIntent';
-import type { ExerciseIntentModel, PoseLandmarks } from '../lib/exercises/exerciseIntentTypes';
-import { useExerciseIntentRuntime } from '../lib/session/useExerciseIntentRuntime';
-import type {
-  RunnerPhase,
-  SessionControlSignal,
-  SessionDefinition,
-  SessionResult,
-  SessionStepResult
-} from '../lib/sessionTypes';
-import type { DebugState } from '../lib/poseTypes';
+"use client";
 
-type Props = {
-  session: SessionDefinition;
-  onComplete: (result: SessionResult) => void;
-  onCancel: () => void;
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildPoseFrame } from "../lib/pose/buildPoseFrame";
+import { buildBiomechanicsFrame } from "../lib/biomechanics/buildBiomechanicsFrame";
+import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEngine";
+import { buildDemoSession } from "../lib/session/buildDemoSession";
+import { SessionRunnerState } from "../lib/session/sessionTypes";
+import { RuntimeFrameResult } from "../lib/runtime/runtimeTypes";
+import { RawPoseFrame, RawPoseKeypoint } from "../lib/pose/poseTypes";
+
+/**
+ * IMPORTANT:
+ * This component shows the integration pattern.
+ * Replace `getMockPoseFrameFromVideo()` with your real BlazePose / MediaPipe detector call.
+ */
+
+type DetectorKeypoint = {
+  name?: string;
+  x: number;
+  y: number;
+  z?: number;
+  score?: number;
 };
 
-function mapStepExerciseToIntent(exerciseId: string): ExerciseIntentModel | null {
-  switch (exerciseId) {
-    case 'raise_right_hand':
-      return rightArmRaiseIntent;
-    case 'raise_left_hand':
-      return leftArmRaiseIntent;
-    case 'raise_right_knee':
-    case 'seated_right_knee_lift':
-      return seatedKneeLiftIntent;
-    default:
-      return null;
-  }
-}
+type DetectorPoseResult = {
+  keypoints: DetectorKeypoint[];
+};
 
-function getExerciseInstructionCopy(currentExerciseLabel: string) {
-  const label = currentExerciseLabel.toLowerCase();
-
-  if (label.includes('both hands')) {
-    return {
-      action: 'Raise both hands slowly.',
-      continue: 'Good. Keep raising both hands.'
-    };
-  }
-
-  if (label.includes('left')) {
-    return {
-      action: 'Raise your left hand slowly.',
-      continue: 'Good. Keep raising your left hand.'
-    };
-  }
-
-  if (label.includes('right')) {
-    return {
-      action: 'Raise your right hand slowly.',
-      continue: 'Good. Keep raising your right hand.'
-    };
-  }
-
-  if (label.includes('knee')) {
-    return {
-      action: 'Lift your knee slowly.',
-      continue: 'Good. Keep lifting your knee.'
-    };
-  }
-
-  if (label.includes('sit to stand')) {
-    return {
-      action: 'Stand up slowly.',
-      continue: 'Good. Keep standing up.'
-    };
-  }
+function mapDetectorKeypointsToRaw(
+  detectorPose: DetectorPoseResult,
+  video: HTMLVideoElement,
+): RawPoseFrame {
+  const keypoints: RawPoseKeypoint[] = detectorPose.keypoints
+    .filter((kp) => typeof kp.name === "string")
+    .map((kp) => ({
+      name: kp.name as RawPoseKeypoint["name"],
+      x: kp.x,
+      y: kp.y,
+      z: kp.z,
+      score: kp.score,
+    }));
 
   return {
-    action: 'Begin the movement slowly.',
-    continue: 'Good. Keep going.'
+    timestampMs: performance.now(),
+    frameWidth: video.videoWidth || 1,
+    frameHeight: video.videoHeight || 1,
+    keypoints,
+    source: "blazepose",
   };
 }
 
-function getCoachMessage(params: {
-  phase: RunnerPhase;
-  debug: DebugState | null;
-  currentExerciseLabel: string;
-  currentStepIndex: number;
-  totalSteps: number;
-  targetReps: number;
-  targetHoldSeconds?: number;
-}) {
-  const {
-    phase,
-    debug,
-    currentExerciseLabel,
-    currentStepIndex,
-    totalSteps,
-    targetReps,
-    targetHoldSeconds
-  } = params;
-
-  const instructionCopy = getExerciseInstructionCopy(currentExerciseLabel);
-
-  if (phase === 'session_intro') {
-    return {
-      headline: 'Raise either hand to begin.',
-      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Target ${targetReps} reps`,
-      status: 'waiting',
-      error: null as string | null
-    };
-  }
-
-  if (phase === 'precheck') {
-    return {
-      headline: 'Get into position.',
-      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • ${currentExerciseLabel}`,
-      status: 'precheck',
-      error: null as string | null
-    };
-  }
-
-  if (phase === 'countdown') {
-    return {
-      headline: 'Get ready.',
-      subline: `Starting ${currentExerciseLabel}`,
-      status: 'countdown',
-      error: null as string | null
-    };
-  }
-
-  if (phase === 'rest') {
-    return {
-      headline: 'Take a short rest.',
-      subline: 'Recover before the next step',
-      status: 'rest',
-      error: null as string | null
-    };
-  }
-
-  if (phase === 'exercise_complete') {
-    return {
-      headline: 'Great job.',
-      subline: 'Exercise completed successfully.',
-      status: 'complete',
-      error: null as string | null
-    };
-  }
-
-  if (phase === 'session_complete') {
-    return {
-      headline: 'Session complete.',
-      subline: 'Excellent work today.',
-      status: 'complete',
-      error: null as string | null
-    };
-  }
-
-  if (!debug) {
-    return {
-      headline: 'Waiting for camera data.',
-      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps}`,
-      status: 'waiting',
-      error: null as string | null
-    };
-  }
-
-  if (!debug.personDetected || debug.tracking !== 'active') {
-    return {
-      headline: 'Step into the frame.',
-      subline: 'We need to see you clearly before we begin',
-      status: 'tracking',
-      error: 'no_person'
-    };
-  }
-
-  const completed = debug.repCount ?? 0;
-  const lift = debug.currentLiftNorm ?? 0;
-  const holdMs = debug.holdMs ?? 0;
-  const phaseName = debug.exercisePhase ?? 'idle';
-  const holdTargetMs = Math.max(0, (targetHoldSeconds ?? 0) * 1000);
-
-  if (phaseName === 'idle') {
-    return {
-      headline: instructionCopy.action,
-      subline: `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps}`,
-      status: 'ready',
-      error: null as string | null
-    };
-  }
-
-  if (phaseName === 'moving_up') {
-    if (lift < 0.18) {
-      return {
-        headline: 'Lift a little higher.',
-        subline: `Reps ${completed}/${targetReps}`,
-        status: 'lifting',
-        error: 'insufficient_range'
-      };
-    }
-
-    return {
-      headline: instructionCopy.continue,
-      subline: `Reps ${completed}/${targetReps}`,
-      status: 'lifting',
-      error: null as string | null
-    };
-  }
-
-  if (phaseName === 'holding') {
-    if (holdTargetMs > 0 && holdMs < holdTargetMs) {
-      return {
-        headline: 'Hold.',
-        subline: `${Math.ceil((holdTargetMs - holdMs) / 1000)}s remaining`,
-        status: 'holding',
-        error: null as string | null
-      };
-    }
-
-    return {
-      headline: 'Great. Now lower slowly.',
-      subline: `Reps ${completed}/${targetReps}`,
-      status: 'holding',
-      error: null as string | null
-    };
-  }
-
-  if (phaseName === 'moving_down') {
-    return {
-      headline: 'Lower slowly.',
-      subline: `Reps ${completed}/${targetReps}`,
-      status: 'lowering',
-      error: null as string | null
-    };
-  }
-
-  if (phaseName === 'rep_complete') {
-    return {
-      headline: 'Great job. That is one rep.',
-      subline: `Reps ${completed}/${targetReps}`,
-      status: 'rep_complete',
-      error: null as string | null
-    };
-  }
-
-  if (phaseName === 'lost') {
-    return {
-      headline: 'Please come back into view.',
-      subline: 'We lost tracking for a moment',
-      status: 'tracking',
-      error: 'lost'
-    };
-  }
-
-  return {
-    headline: instructionCopy.action,
-    subline: `Reps ${completed}/${targetReps}`,
-    status: 'active',
-    error: null as string | null
-  };
+/**
+ * Replace this with real detector inference.
+ * Example later:
+ *   const poses = await detector.estimatePoses(video, { flipHorizontal: false });
+ *   return poses[0] ?? null;
+ */
+async function getMockPoseFrameFromVideo(
+  _video: HTMLVideoElement,
+): Promise<DetectorPoseResult | null> {
+  return null;
 }
 
-export default function SessionRunner({ session, onComplete, onCancel }: Props) {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [runnerPhase, setRunnerPhase] = useState<RunnerPhase>('session_intro');
-  const [latestDebug, setLatestDebug] = useState<DebugState | null>(null);
-  const [gestureSignal, setGestureSignal] = useState<SessionControlSignal>({
-    detected: false,
-    holdMs: 0
-  });
-  const [countdownValue, setCountdownValue] = useState(3);
-  const [restSecondsLeft, setRestSecondsLeft] = useState(0);
-  const [results, setResults] = useState<SessionStepResult[]>([]);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
-  const [showExerciseIntroOverlay, setShowExerciseIntroOverlay] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
+function formatStatusLabel(status: string): string {
+  return status.replaceAll("_", " ");
+}
 
-  const currentStepStartPostureRef = useRef<'standing' | 'sitting' | 'unknown'>('unknown');
-  const finalResultRef = useRef<SessionResult | null>(null);
-  const stepCompletionHandledRef = useRef(false);
+export default function SessionRunner() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
-  const currentStep = session.steps[currentStepIndex];
-  const currentExercise = currentStep
-    ? EXERCISE_REGISTRY[currentStep.exerciseId]
-    : null;
+  const engineRef = useRef(createSessionRunnerEngine());
+  const previousBiomechFrameRef = useRef<ReturnType<typeof buildBiomechanicsFrame> | null>(null);
 
-  const currentIntentExercise = useMemo(() => {
-    return currentStep ? mapStepExerciseToIntent(currentStep.exerciseId) : null;
-  }, [currentStep]);
+  const [cameraStarted, setCameraStarted] = useState(false);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const {
-    start: startIntentRuntime,
-    reset: resetIntentRuntime,
-    processLandmarks
-  } = useExerciseIntentRuntime(currentIntentExercise);
+  const [sessionState, setSessionState] = useState<SessionRunnerState>(
+    engineRef.current.getState(),
+  );
+  const [runtimeResult, setRuntimeResult] = useState<RuntimeFrameResult | null>(null);
 
-  const progressText = useMemo(() => {
-    return `${Math.min(currentStepIndex + 1, session.steps.length)} / ${session.steps.length}`;
-  }, [currentStepIndex, session.steps.length]);
+  const demoSession = useMemo(() => buildDemoSession(), []);
 
-  const readiness = useMemo(() => {
-    if (!currentStep) {
-      return { ready: false, message: 'No active step.' };
-    }
+  const currentExerciseTitle =
+    sessionState.currentItem?.exercise.title ?? "No exercise loaded";
 
-    if (!latestDebug) {
-      return { ready: false, message: 'Waiting for camera data...' };
-    }
+  const currentRepCount =
+    runtimeResult?.exerciseState?.repState.repCount ?? 0;
 
-    if (!latestDebug.personDetected || latestDebug.tracking !== 'active') {
-      return { ready: false, message: 'Step into the frame' };
-    }
+  const currentRepTarget =
+    sessionState.currentItem?.repTarget ??
+    sessionState.currentItem?.exercise.repTargetDefault ??
+    0;
 
-    if (
-      currentStep.requiredPosture !== 'either' &&
-      latestDebug.posture !== currentStep.requiredPosture
-    ) {
-      return {
-        ready: false,
-        message:
-          currentStep.requiredPosture === 'standing'
-            ? 'Please stand up to begin'
-            : 'Please sit down to begin'
-      };
-    }
+  const coachingMessage =
+    runtimeResult?.coachingMessage ??
+    (sessionState.status === "ready"
+      ? "Press Start Session when you are ready."
+      : sessionState.status === "running"
+      ? "Tracking..."
+      : "Idle");
 
-    return { ready: true, message: 'Ready to begin' };
-  }, [latestDebug, currentStep]);
+  const startCamera = useCallback(async () => {
+    try {
+      setError(null);
 
-  const coach = useMemo(() => {
-    if (!currentExercise || !currentStep) {
-      return {
-        headline: 'Get ready.',
-        subline: '',
-        status: 'idle',
-        error: null as string | null
-      };
-    }
-
-    return getCoachMessage({
-      phase: runnerPhase,
-      debug: latestDebug,
-      currentExerciseLabel: currentExercise.label,
-      currentStepIndex,
-      totalSteps: session.steps.length,
-      targetReps: currentStep.targetReps,
-      targetHoldSeconds: currentStep.targetHoldSeconds
-    });
-  }, [runnerPhase, latestDebug, currentExercise, currentStep, currentStepIndex, session.steps.length]);
-
-  useEffect(() => {
-    if (!sessionStartedAt) return;
-    if (runnerPhase === 'session_complete') return;
-
-    setElapsedMs(Date.now() - sessionStartedAt);
-
-    const timer = window.setInterval(() => {
-      setElapsedMs(Date.now() - sessionStartedAt);
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [sessionStartedAt, runnerPhase]);
-
-  useEffect(() => {
-    if (runnerPhase !== 'session_intro') return;
-    if (!readiness.ready) return;
-
-    if (gestureSignal.detected && gestureSignal.holdMs >= 1000) {
-      const now = Date.now();
-      setSessionStartedAt(now);
-      setElapsedMs(0);
-      setCountdownValue(3);
-      setRunnerPhase('countdown');
-    }
-  }, [runnerPhase, readiness.ready, gestureSignal.detected, gestureSignal.holdMs]);
-
-  useEffect(() => {
-    if (runnerPhase !== 'precheck') return;
-
-    if (readiness.ready) {
-      setCountdownValue(3);
-      setRunnerPhase('countdown');
-    }
-  }, [runnerPhase, readiness.ready]);
-
-  useEffect(() => {
-    if (runnerPhase !== 'countdown') return;
-
-    if (!readiness.ready) {
-      setRunnerPhase(sessionStartedAt ? 'precheck' : 'session_intro');
-      return;
-    }
-
-    if (countdownValue <= 0) {
-      currentStepStartPostureRef.current = latestDebug?.posture ?? 'unknown';
-      stepCompletionHandledRef.current = false;
-      setShowExerciseIntroOverlay(true);
-      startIntentRuntime();
-      setRunnerPhase('active');
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setCountdownValue((prev) => prev - 1);
-    }, 1000);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    runnerPhase,
-    countdownValue,
-    readiness.ready,
-    sessionStartedAt,
-    latestDebug?.posture,
-    startIntentRuntime
-  ]);
-
-  useEffect(() => {
-    if (!showExerciseIntroOverlay) return;
-
-    const timer = window.setTimeout(() => {
-      setShowExerciseIntroOverlay(false);
-    }, 2000);
-
-    return () => window.clearTimeout(timer);
-  }, [showExerciseIntroOverlay]);
-
-  useEffect(() => {
-    if (!currentStep) return;
-    if (runnerPhase !== 'active') return;
-    if (!latestDebug) return;
-    if (stepCompletionHandledRef.current) return;
-
-    if (latestDebug.repCount >= currentStep.targetReps) {
-      stepCompletionHandledRef.current = true;
-      handleExerciseComplete({
-        completedReps: latestDebug.repCount,
-        sessionPeakLift: latestDebug.sessionPeakLift,
-        lastRepPeakLift: latestDebug.lastRepPeakLift
-      });
-    }
-  }, [runnerPhase, latestDebug, currentStep]);
-
-  useEffect(() => {
-    if (!currentStep) return;
-    if (runnerPhase !== 'exercise_complete') return;
-
-    const timer = window.setTimeout(() => {
-      if (currentStep.restSeconds > 0) {
-        setRestSecondsLeft(currentStep.restSeconds);
-        setRunnerPhase('rest');
-      } else {
-        advanceToNextStep();
+      if (streamRef.current) {
+        setCameraStarted(true);
+        engineRef.current.markCameraActive(true);
+        setSessionState(engineRef.current.getState());
+        return;
       }
-    }, 2000);
 
-    return () => window.clearTimeout(timer);
-  }, [runnerPhase, currentStep]);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
 
-  useEffect(() => {
-    if (runnerPhase !== 'rest') return;
+      streamRef.current = stream;
 
-    if (restSecondsLeft <= 0) {
-      advanceToNextStep();
+      if (!videoRef.current) {
+        throw new Error("Video element is not available.");
+      }
+
+      videoRef.current.srcObject = stream;
+
+      await videoRef.current.play();
+
+      setCameraStarted(true);
+      engineRef.current.markCameraActive(true);
+      setSessionState(engineRef.current.getState());
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not start video source.";
+      setError(message);
+      setCameraStarted(false);
+      engineRef.current.markCameraActive(false);
+      setSessionState(engineRef.current.getState());
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) {
+        track.stop();
+      }
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraStarted(false);
+    engineRef.current.markCameraActive(false);
+    setSessionState(engineRef.current.getState());
+  }, []);
+
+  const loadSession = useCallback(() => {
+    engineRef.current.loadSession(demoSession);
+    setSessionLoaded(true);
+    setSessionState(engineRef.current.getState());
+    setRuntimeResult(null);
+  }, [demoSession]);
+
+  const startSession = useCallback(() => {
+    engineRef.current.startSession(performance.now());
+    setSessionState(engineRef.current.getState());
+  }, []);
+
+  const pauseSession = useCallback(() => {
+    engineRef.current.pauseSession();
+    setSessionState(engineRef.current.getState());
+  }, []);
+
+  const resumeSession = useCallback(() => {
+    engineRef.current.resumeSession();
+    setSessionState(engineRef.current.getState());
+  }, []);
+
+  const abortSession = useCallback(() => {
+    engineRef.current.abortSession();
+    setSessionState(engineRef.current.getState());
+  }, []);
+
+  const processLoop = useCallback(async () => {
+    const video = videoRef.current;
+
+    if (!video || !streamRef.current) {
+      animationFrameRef.current = requestAnimationFrame(() => {
+        void processLoop();
+      });
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      setRestSecondsLeft((prev) => prev - 1);
-    }, 1000);
+    try {
+      const detectorPose = await getMockPoseFrameFromVideo(video);
 
-    return () => window.clearTimeout(timer);
-  }, [runnerPhase, restSecondsLeft]);
+      if (detectorPose) {
+        const rawPose = mapDetectorKeypointsToRaw(detectorPose, video);
+        const poseFrame = buildPoseFrame(rawPose);
+        const biomechanicsFrame = buildBiomechanicsFrame(
+          poseFrame,
+          previousBiomechFrameRef.current,
+        );
 
-  useEffect(() => {
-    if (runnerPhase !== 'session_complete') return;
-    if (!finalResultRef.current) return;
+        previousBiomechFrameRef.current = biomechanicsFrame;
 
-    const timer = window.setTimeout(() => {
-      onComplete(finalResultRef.current as SessionResult);
-    }, 2500);
+        const result = engineRef.current.processFrame(biomechanicsFrame);
 
-    return () => window.clearTimeout(timer);
-  }, [runnerPhase, onComplete]);
-
-  function handlePoseLandmarksChange(landmarks: PoseLandmarks) {
-    if (runnerPhase !== 'active') return;
-    if (!currentIntentExercise) return;
-    processLandmarks(landmarks);
-  }
-
-  function advanceToNextStep() {
-    const isLast = currentStepIndex >= session.steps.length - 1;
-
-    if (isLast) {
-      const finishedAt = Date.now();
-      finalResultRef.current = {
-        sessionName: session.name,
-        startedAt: sessionStartedAt ?? finishedAt,
-        finishedAt,
-        totalDurationMs: sessionStartedAt ? finishedAt - sessionStartedAt : 0,
-        steps: results
-      };
-      setRunnerPhase('session_complete');
-      return;
+        setRuntimeResult(result.runtimeResult);
+        setSessionState(result.sessionState);
+      } else {
+        setSessionState(engineRef.current.getState());
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Pose processing failed.";
+      setError(message);
     }
 
-    resetIntentRuntime();
-    setCurrentStepIndex((prev) => prev + 1);
-    setRunnerPhase('precheck');
-    setCountdownValue(3);
-    setRestSecondsLeft(0);
-    setLatestDebug(null);
-    stepCompletionHandledRef.current = false;
-  }
+    animationFrameRef.current = requestAnimationFrame(() => {
+      void processLoop();
+    });
+  }, []);
 
-  function handleExerciseComplete(result: {
-    completedReps: number;
-    sessionPeakLift: number;
-    lastRepPeakLift: number | null;
-  }) {
-    if (!currentExercise || !currentStep) return;
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
 
-    const stepResult: SessionStepResult = {
-      stepId: currentStep.id,
-      exerciseId: currentStep.exerciseId,
-      label: currentExercise.label,
-      targetReps: currentStep.targetReps,
-      completedReps: result.completedReps,
-      targetHoldSeconds: currentStep.targetHoldSeconds,
-      restSeconds: currentStep.restSeconds,
-      requiredPosture: currentStep.requiredPosture,
-      postureAtStart: currentStepStartPostureRef.current,
-      sessionPeakLift: result.sessionPeakLift,
-      lastRepPeakLift: result.lastRepPeakLift,
-      success: result.completedReps >= currentStep.targetReps
+  useEffect(() => {
+    if (!cameraStarted) return;
+
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    animationFrameRef.current = requestAnimationFrame(() => {
+      void processLoop();
+    });
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
     };
+  }, [cameraStarted, processLoop]);
 
-    const nextResults = [...results, stepResult];
-    setResults(nextResults);
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
 
-    const isLast = currentStepIndex >= session.steps.length - 1;
-    if (isLast) {
-      const finishedAt = Date.now();
-      finalResultRef.current = {
-        sessionName: session.name,
-        startedAt: sessionStartedAt ?? finishedAt,
-        finishedAt,
-        totalDurationMs: sessionStartedAt ? finishedAt - sessionStartedAt : 0,
-        steps: nextResults
-      };
-      setRunnerPhase('session_complete');
-      return;
-    }
+      if (streamRef.current) {
+        for (const track of streamRef.current.getTracks()) {
+          track.stop();
+        }
+      }
+    };
+  }, []);
 
-    setRunnerPhase('exercise_complete');
-  }
-
-  if (!currentStep || !currentExercise) return null;
-
-  const nextExerciseLabel = session.steps[currentStepIndex + 1]
-    ? EXERCISE_REGISTRY[session.steps[currentStepIndex + 1].exerciseId]?.label ?? 'Next Exercise'
-    : 'Session complete';
-
-  const overlay = getOverlayContent({
-    phase: runnerPhase,
-    readinessMessage: readiness.message,
-    countdownValue,
-    restSecondsLeft,
-    nextExerciseLabel,
-    gestureHoldMs: gestureSignal.holdMs,
-    showExerciseIntroOverlay,
-    currentExerciseLabel: currentExercise.label,
-    currentStepIndex,
-    totalSteps: session.steps.length,
-    targetReps: currentStep.targetReps
-  });
-
-  const activeInstructionText =
-    runnerPhase === 'active'
-      ? `Exercise ${currentStepIndex + 1} of ${session.steps.length}: ${currentExercise.label} | Target reps: ${currentStep.targetReps} | Completed: ${latestDebug?.repCount ?? 0}`
-      : undefined;
+  const completedExercises = sessionState.progress.completedExerciseIds.length;
+  const totalExercises = sessionState.progress.totalExercises;
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, background: '#020817' }}>
-      <div style={{ maxWidth: 1440, margin: '0 auto' }}>
-        <div style={headerStyle}>
-          <HeaderMetric label="Session" value={session.name} align="left" />
-          <HeaderMetric label="Progress" value={progressText} />
-          <HeaderMetric label="Elapsed Time" value={formatElapsed(elapsedMs)} />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setShowDebugPanel((prev) => !prev)} style={secondaryButtonStyle}>
-              {showDebugPanel ? 'Hide Debug' : 'Show Debug'}
-            </button>
-            <button onClick={onCancel} style={buttonStyle('#991b1b')}>
-              Cancel Session
-            </button>
-          </div>
+    <div className="w-full p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Session Runner</h1>
+          <p className="text-sm text-gray-600">
+            Minimal runner pattern with persistent camera and frame loop.
+          </p>
         </div>
 
-        <div style={heroGridStyle}>
-          <section style={coachPanelStyle}>
-            <div style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>
-              Coach
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 40, fontWeight: 900, lineHeight: 1.04 }}>
-              {currentExercise.label}
-            </div>
-
-            <div style={{ marginTop: 14, color: '#cbd5e1', fontSize: 16, lineHeight: 1.5 }}>
-              Exercise {currentStepIndex + 1} of {session.steps.length} • Reps{' '}
-              {latestDebug?.repCount ?? 0}/{currentStep.targetReps}
-            </div>
-
-            <div style={coachMessageCardStyle}>
-              <div style={coachMessageLabelStyle}>Live Guidance</div>
-              <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, lineHeight: 1.14 }}>
-                {coach.headline}
-              </div>
-
-              <div style={{ marginTop: 12, color: '#cbd5e1', fontSize: 15 }}>
-                {coach.subline}
-              </div>
-
-              <div style={{ marginTop: 18, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-                <div style={coachMetaChipStyle}>
-                  State: <strong>{latestDebug?.exercisePhase ?? 'idle'}</strong>
-                </div>
-                <div style={coachMetaChipStyle}>
-                  Reps: <strong>{latestDebug?.repCount ?? 0}</strong>
-                </div>
-                <div style={coachMetaChipStyle}>
-                  Lift: <strong>{(latestDebug?.currentLiftNorm ?? 0).toFixed(3)}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div style={coachFooterStyle}>
-              <div style={{ color: '#94a3b8', fontSize: 13 }}>Session Progress</div>
-              <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800 }}>
-                {latestDebug?.repCount ?? 0} / {currentStep.targetReps} reps completed
-              </div>
-              <div style={{ marginTop: 8, color: '#93c5fd', fontSize: 15 }}>
-                Next: {nextExerciseLabel}
-              </div>
-            </div>
-          </section>
-
-          <section style={videoPanelStyle}>
-            <div
-              style={{
-                ...cameraBannerStyle,
-                borderColor: latestDebug?.framingStatus === 'good' ? '#14532d' : '#7c2d12',
-                background: latestDebug?.framingStatus === 'good' ? '#052e16' : '#3f1d0b'
-              }}
-            >
-              <span style={{ color: '#cbd5e1', fontSize: 12, fontWeight: 700, letterSpacing: 0.3 }}>
-                CAMERA GUIDANCE
-              </span>
-              <span style={{ marginLeft: 10, fontSize: 16, fontWeight: 800 }}>
-                {latestDebug?.framingMessage ?? 'Step into the frame'}
-              </span>
-            </div>
-
-            <PoseTrackerPage
-              selectedExerciseId={currentStep.exerciseId}
-              sessionMode
-              targetReps={runnerPhase === 'active' ? currentStep.targetReps : undefined}
-              targetHoldSeconds={currentStep.targetHoldSeconds}
-              externalStatusText={
-                runnerPhase === 'session_intro'
-                  ? readiness.ready
-                    ? 'Raise either hand and hold for 1 second to begin the session'
-                    : readiness.message
-                  : runnerPhase === 'precheck'
-                    ? readiness.message
-                    : runnerPhase === 'countdown'
-                      ? `Starting in ${countdownValue}`
-                      : runnerPhase === 'active'
-                        ? activeInstructionText
-                        : runnerPhase === 'exercise_complete'
-                          ? 'Exercise completed successfully. Well done!'
-                          : runnerPhase === 'rest'
-                            ? `Rest: ${restSecondsLeft}s`
-                            : runnerPhase === 'session_complete'
-                              ? 'Session completed successfully. Great work today!'
-                              : undefined
-              }
-              exerciseEnabled={runnerPhase === 'active'}
-              onDebugStateChange={setLatestDebug}
-              onControlGesture={setGestureSignal}
-              onPoseLandmarksChange={handlePoseLandmarksChange}
-            />
-          </section>
-        </div>
-
-        {showDebugPanel ? (
-          <div style={debugSectionStyle}>
-            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>Debug Panel</div>
-            <div style={debugGridStyle}>
-              <Metric label="Tracking State" value={latestDebug?.tracking ?? 'idle'} />
-              <Metric label="Person Detected" value={latestDebug?.personDetected ? 'Yes' : 'No'} />
-              <Metric label="Track ID" value={latestDebug?.trackId ?? '—'} />
-              <Metric label="Visible Keypoints" value={latestDebug?.visibleKeypoints ?? 0} />
-              <Metric
-                label="Confidence"
-                value={`${(((latestDebug?.confidence ?? 0) as number) * 100).toFixed(0)}%`}
-              />
-              <Metric label="FPS" value={latestDebug?.fps ?? 0} />
-              <Metric label="Posture" value={latestDebug?.posture ?? 'unknown'} />
-              <Metric label="Avg Knee Angle" value={Math.round(latestDebug?.avgKneeAngle ?? 0)} />
-              <Metric label="Framing Status" value={latestDebug?.framingStatus ?? 'no_person'} />
-              <Metric label="Exercise" value={currentExercise.label} />
-              <Metric label="Exercise Phase" value={latestDebug?.exercisePhase ?? 'idle'} />
-              <Metric label="Rep Count" value={latestDebug?.repCount ?? 0} />
-              <Metric label="Hold (ms)" value={Math.round(latestDebug?.holdMs ?? 0)} />
-              <Metric label="Current Lift" value={(latestDebug?.currentLiftNorm ?? 0).toFixed(3)} />
-              <Metric
-                label="Rep Peak Lift"
-                value={(latestDebug?.currentRepPeakLift ?? 0).toFixed(3)}
-              />
-              <Metric
-                label="Last Rep Peak"
-                value={
-                  latestDebug?.lastRepPeakLift != null
-                    ? latestDebug.lastRepPeakLift.toFixed(3)
-                    : '—'
-                }
-              />
-              <Metric
-                label="Session Best Lift"
-                value={(latestDebug?.sessionPeakLift ?? 0).toFixed(3)}
-              />
-            </div>
+        {error ? (
+          <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+            {error}
           </div>
         ) : null}
 
-        <CenteredOverlay
-          visible={overlay.visible}
-          title={overlay.title}
-          subtitle={overlay.subtitle}
-        />
-      </div>
-    </main>
-  );
-}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-medium">Live Camera</h2>
+              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
+                {cameraStarted ? "Camera Active" : "Camera Off"}
+              </span>
+            </div>
 
-function HeaderMetric({
-  label,
-  value,
-  align = 'center'
-}: {
-  label: string;
-  value: string;
-  align?: 'left' | 'center';
-}) {
-  return (
-    <div style={{ textAlign: align, minWidth: 160 }}>
-      <div style={{ color: '#94a3b8', fontSize: 12 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 800 }}>{value}</div>
-    </div>
-  );
-}
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="h-full w-full object-cover"
+              />
+            </div>
 
-function getOverlayContent({
-  phase,
-  readinessMessage,
-  countdownValue,
-  restSecondsLeft,
-  nextExerciseLabel,
-  gestureHoldMs,
-  showExerciseIntroOverlay,
-  currentExerciseLabel,
-  currentStepIndex,
-  totalSteps,
-  targetReps
-}: {
-  phase: RunnerPhase;
-  readinessMessage: string;
-  countdownValue: number;
-  restSecondsLeft: number;
-  nextExerciseLabel: string;
-  gestureHoldMs: number;
-  showExerciseIntroOverlay: boolean;
-  currentExerciseLabel: string;
-  currentStepIndex: number;
-  totalSteps: number;
-  targetReps: number;
-}) {
-  if (phase === 'session_intro') {
-    return {
-      visible: true,
-      title: 'Ready to Begin Your Session',
-      subtitle:
-        readinessMessage === 'Ready to begin'
-          ? `Raise either hand and hold for 1 second to begin (${Math.round(gestureHoldMs)} ms / 1000 ms)`
-          : readinessMessage
-    };
-  }
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={startCamera}
+                className="rounded-xl border px-4 py-2 text-sm font-medium"
+              >
+                Start Camera
+              </button>
 
-  if (phase === 'countdown') {
-    return {
-      visible: true,
-      title: String(countdownValue),
-      subtitle: 'Get ready'
-    };
-  }
+              <button
+                onClick={stopCamera}
+                className="rounded-xl border px-4 py-2 text-sm font-medium"
+              >
+                Stop Camera
+              </button>
+            </div>
+          </div>
 
-  if (showExerciseIntroOverlay && phase === 'active') {
-    return {
-      visible: true,
-      title: `Exercise ${currentStepIndex + 1} of ${totalSteps}`,
-      subtitle: `${currentExerciseLabel} • Target reps: ${targetReps}`
-    };
-  }
+          <div className="rounded-2xl border bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-medium">Session Status</h2>
+              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs capitalize">
+                {formatStatusLabel(sessionState.status)}
+              </span>
+            </div>
 
-  if (phase === 'exercise_complete') {
-    return {
-      visible: true,
-      title: '✓ Exercise Completed Successfully!',
-      subtitle: `Well done! Next: ${nextExerciseLabel}`
-    };
-  }
+            <div className="space-y-4">
+              <div className="rounded-xl bg-gray-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-gray-500">
+                  Current Exercise
+                </div>
+                <div className="mt-1 text-xl font-semibold">
+                  {currentExerciseTitle}
+                </div>
+              </div>
 
-  if (phase === 'rest') {
-    return {
-      visible: true,
-      title: 'Rest',
-      subtitle: `Next exercise starts in ${restSecondsLeft}s`
-    };
-  }
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">
+                    Reps
+                  </div>
+                  <div className="mt-1 text-2xl font-semibold">
+                    {currentRepCount} / {currentRepTarget}
+                  </div>
+                </div>
 
-  if (phase === 'session_complete') {
-    return {
-      visible: true,
-      title: '🎉 Session Completed Successfully!',
-      subtitle: 'Great work today!'
-    };
-  }
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">
+                    Progress
+                  </div>
+                  <div className="mt-1 text-2xl font-semibold">
+                    {completedExercises} / {totalExercises}
+                  </div>
+                </div>
+              </div>
 
-  return {
-    visible: false,
-    title: '',
-    subtitle: ''
-  };
-}
+              <div className="rounded-xl bg-blue-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-blue-700">
+                  Coaching
+                </div>
+                <div className="mt-1 text-base font-medium text-blue-900">
+                  {coachingMessage}
+                </div>
+              </div>
 
-function CenteredOverlay({
-  visible,
-  title,
-  subtitle
-}: {
-  visible: boolean;
-  title: string;
-  subtitle: string;
-}) {
-  if (!visible) return null;
+              <div className="rounded-xl bg-gray-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-gray-500">
+                  Runtime Phase
+                </div>
+                <div className="mt-1 text-base font-medium">
+                  {runtimeResult?.exerciseState?.repState.phase
+                    ? formatStatusLabel(runtimeResult.exerciseState.repState.phase)
+                    : "n/a"}
+                </div>
+              </div>
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'grid',
-        placeItems: 'center',
-        pointerEvents: 'none',
-        background: 'rgba(2, 6, 23, 0.30)',
-        zIndex: 50
-      }}
-    >
-      <div
-        style={{
-          background: 'rgba(15, 23, 42, 0.96)',
-          border: '2px solid #334155',
-          borderRadius: 24,
-          padding: '30px 40px',
-          maxWidth: 760,
-          textAlign: 'center',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
-        }}
-      >
-        <div style={{ fontSize: 52, fontWeight: 900, lineHeight: 1.08 }}>{title}</div>
-        <div style={{ marginTop: 14, fontSize: 24, color: '#dbeafe', lineHeight: 1.35 }}>
-          {subtitle}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={loadSession}
+                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                >
+                  Load Demo Session
+                </button>
+
+                <button
+                  onClick={startSession}
+                  disabled={!sessionLoaded}
+                  className="rounded-xl border px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  Start Session
+                </button>
+
+                <button
+                  onClick={pauseSession}
+                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                >
+                  Pause
+                </button>
+
+                <button
+                  onClick={resumeSession}
+                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                >
+                  Resume
+                </button>
+
+                <button
+                  onClick={abortSession}
+                  className="rounded-xl border px-4 py-2 text-sm font-medium"
+                >
+                  Abort
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <h3 className="text-lg font-medium">Debug Snapshot</h3>
+          <pre className="mt-3 overflow-auto rounded-xl bg-gray-50 p-4 text-xs">
+            {JSON.stringify(
+              {
+                sessionStatus: sessionState.status,
+                currentExercise: sessionState.currentItem?.exercise.title ?? null,
+                currentIndex: sessionState.progress.currentIndex,
+                totalExercises: sessionState.progress.totalExercises,
+                completedExerciseIds: sessionState.progress.completedExerciseIds,
+                totalRepsCompleted: sessionState.progress.totalRepsCompleted,
+                runtimeStatus: runtimeResult?.status ?? null,
+                repState: runtimeResult?.exerciseState?.repState ?? null,
+                coachingMessage,
+                debug: runtimeResult?.debug ?? null,
+              },
+              null,
+              2,
+            )}
+          </pre>
         </div>
       </div>
     </div>
   );
 }
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div
-      style={{
-        background: '#0b1225',
-        border: '1px solid #1f2942',
-        borderRadius: 12,
-        padding: '12px 14px'
-      }}
-    >
-      <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontWeight: 800, fontSize: 18 }}>{value}</div>
-    </div>
-  );
-}
-
-function formatElapsed(ms: number) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-function buttonStyle(bg: string): CSSProperties {
-  return {
-    background: bg,
-    color: 'white',
-    border: 'none',
-    borderRadius: 12,
-    padding: '12px 16px',
-    fontWeight: 700,
-    cursor: 'pointer'
-  };
-}
-
-const secondaryButtonStyle: CSSProperties = {
-  background: '#1e293b',
-  color: 'white',
-  border: '1px solid #334155',
-  borderRadius: 12,
-  padding: '12px 16px',
-  fontWeight: 700,
-  cursor: 'pointer'
-};
-
-const headerStyle: CSSProperties = {
-  background: '#0f172a',
-  border: '1px solid #1f2942',
-  borderRadius: 18,
-  padding: 18,
-  marginBottom: 20,
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 16,
-  flexWrap: 'wrap'
-};
-
-const heroGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(360px, 0.88fr) minmax(700px, 1.12fr)',
-  gap: 20,
-  alignItems: 'start'
-};
-
-const coachPanelStyle: CSSProperties = {
-  background: '#0f172a',
-  border: '1px solid #1f2942',
-  borderRadius: 20,
-  padding: 24,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 18,
-  minHeight: 640
-};
-
-const videoPanelStyle: CSSProperties = {
-  background: '#0f172a',
-  border: '1px solid #1f2942',
-  borderRadius: 20,
-  padding: 18
-};
-
-const coachMessageCardStyle: CSSProperties = {
-  background: '#081224',
-  border: '1px solid #1e3a5f',
-  borderRadius: 18,
-  padding: 20
-};
-
-const coachMessageLabelStyle: CSSProperties = {
-  color: '#93c5fd',
-  fontSize: 13,
-  fontWeight: 700,
-  letterSpacing: 0.3
-};
-
-const coachMetaChipStyle: CSSProperties = {
-  background: '#0b1225',
-  border: '1px solid #1f2942',
-  borderRadius: 999,
-  padding: '8px 12px',
-  fontSize: 14,
-  color: '#cbd5e1'
-};
-
-const coachFooterStyle: CSSProperties = {
-  marginTop: 'auto',
-  background: '#0b1225',
-  border: '1px solid #1f2942',
-  borderRadius: 18,
-  padding: 18
-};
-
-const cameraBannerStyle: CSSProperties = {
-  border: '1px solid',
-  borderRadius: 12,
-  padding: '10px 14px',
-  marginBottom: 14
-};
-
-const debugSectionStyle: CSSProperties = {
-  marginTop: 20,
-  background: '#0f172a',
-  border: '1px solid #1f2942',
-  borderRadius: 20,
-  padding: 20
-};
-
-const debugGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-  gap: 12
-};
