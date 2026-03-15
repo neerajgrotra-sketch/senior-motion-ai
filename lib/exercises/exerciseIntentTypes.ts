@@ -66,6 +66,7 @@ export type IntentErrorCode =
   | "trunk_lean"
   | "wrong_side"
   | "no_hold"
+  | "insufficient_range"
   | "unknown";
 
 /* ------------------------------------------------ */
@@ -178,6 +179,7 @@ export type ExerciseIntentModel = {
     detectLowConfidence?: boolean;
     detectWrongSide?: boolean;
     detectNoHold?: boolean;
+    detectInsufficientRange?: boolean;
     [key: string]: boolean | undefined;
   };
 
@@ -195,6 +197,7 @@ export type ExerciseIntentModel = {
     asymmetry?: string;
     wrongSide?: string;
     noHold?: string;
+    insufficientRange?: string;
     reset?: string;
     [key: string]: string | undefined;
   };
