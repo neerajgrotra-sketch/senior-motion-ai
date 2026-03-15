@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, useCallback } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import '@mediapipe/pose';
 
@@ -155,7 +155,6 @@ export default function PoseTrackerPage({
   selectedExerciseId,
   sessionMode = false,
   targetReps,
-  targetHoldSeconds,
   onExerciseComplete,
   externalStatusText,
   exerciseEnabled = true,
@@ -178,6 +177,7 @@ export default function PoseTrackerPage({
   const startGestureSinceRef = useRef<number | null>(null);
   const isStartingRef = useRef(false);
   const completedCalledRef = useRef(false);
+  const autoStartedRef = useRef(false);
 
   const previousFrameRef = useRef<PreviousFrameState | null>(null);
   const runtimeStateRef = useRef<RuntimeState>(createInitialRuntimeState(performance.now()));
@@ -192,7 +192,6 @@ export default function PoseTrackerPage({
   const onExerciseCompleteRef = useRef<Props['onExerciseComplete']>(onExerciseComplete);
   const externalStatusTextRef = useRef(externalStatusText);
   const exerciseEnabledRef = useRef(exerciseEnabled);
-  const targetHoldSecondsRef = useRef(targetHoldSeconds);
 
   useEffect(() => {
     onPoseLandmarksChangeRef.current = onPoseLandmarksChange;
@@ -213,10 +212,6 @@ export default function PoseTrackerPage({
   useEffect(() => {
     exerciseEnabledRef.current = exerciseEnabled;
   }, [exerciseEnabled]);
-
-  useEffect(() => {
-    targetHoldSecondsRef.current = targetHoldSeconds;
-  }, [targetHoldSeconds]);
 
   const exerciseDefinition = useMemo(() => {
     return getDefinitionForExerciseId(selectedExerciseId);
@@ -257,13 +252,7 @@ export default function PoseTrackerPage({
     onDebugStateChange?.(debug);
   }, [debug, onDebugStateChange]);
 
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
-
-  function resetRuntimeState(definition: ExerciseDefinition) {
+  const resetRuntimeState = useCallback((definition: ExerciseDefinition) => {
     activeTrackRef.current = null;
     autoFrameRef.current = null;
     previousFrameRef.current = null;
@@ -283,7 +272,43 @@ export default function PoseTrackerPage({
     lastFpsTickRef.current = performance.now();
 
     setDebug(getInitialDebugState(definition.id));
-  }
+  }, []);
+
+  const releaseMediaResources = useCallback(() => {
+    if (animationRef.current != null) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) {
+        try {
+          track.stop();
+        } catch {
+          // no-op
+        }
+      }
+      streamRef.current = null;
+    }
+
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.pause();
+      } catch {
+        // no-op
+      }
+      video.srcObject = null;
+      video.load?.();
+    }
+  }, []);
+
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, []);
 
   async function ensureDetector() {
     if (!detectorRef.current) {
@@ -341,44 +366,16 @@ export default function PoseTrackerPage({
     throw lastError instanceof Error ? lastError : new Error('Could not access camera.');
   }
 
-  function releaseMediaResources() {
-    if (animationRef.current != null) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
+  const stopCamera = useCallback(() => {
+    releaseMediaResources();
+    resetRuntimeState(exerciseDefinition);
+    setIsRunning(false);
+    clearCanvas();
+  }, [releaseMediaResources, resetRuntimeState, exerciseDefinition, clearCanvas]);
 
-    if (streamRef.current) {
-      for (const track of streamRef.current.getTracks()) {
-        try {
-          track.stop();
-        } catch {
-          // no-op
-        }
-      }
-      streamRef.current = null;
-    }
-
-    const video = videoRef.current;
-    if (video) {
-      try {
-        video.pause();
-      } catch {
-        // no-op
-      }
-      video.srcObject = null;
-      video.load?.();
-    }
-  }
-
-  function clearCanvas() {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  async function startCamera() {
+  const startCamera = useCallback(async () => {
     if (isStartingRef.current) return;
+
     isStartingRef.current = true;
 
     try {
@@ -415,14 +412,17 @@ export default function PoseTrackerPage({
     } finally {
       isStartingRef.current = false;
     }
-  }
+  }, [releaseMediaResources, resetRuntimeState, exerciseDefinition, clearCanvas]);
 
-  function stopCamera() {
-    releaseMediaResources();
-    resetRuntimeState(exerciseDefinition);
-    setIsRunning(false);
-    clearCanvas();
-  }
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startCamera();
+
+    return () => {
+      stopCamera();
+    };
+  }, [startCamera, stopCamera]);
 
   function handleToggleAutoFraming() {
     setAutoFramingEnabled((prev) => {
@@ -502,8 +502,6 @@ export default function PoseTrackerPage({
 
           previousFrameRef.current = nextPreviousFrame;
 
-          // More forgiving session-start gesture:
-          // do not require postureStable, and do not require full "above shoulder".
           const eitherHandUp =
             signals.leftHandLiftNorm > 0.18 || signals.rightHandLiftNorm > 0.18;
 
@@ -584,9 +582,7 @@ export default function PoseTrackerPage({
             holdMs: assessment.holdMs,
             statusText: externalStatusTextRef.current
               ? externalStatusTextRef.current
-              : targetHoldSecondsRef.current && targetHoldSecondsRef.current > 0
-                ? `${assessment.primaryCue ?? 'Hold'} (target hold ${targetHoldSecondsRef.current}s)`
-                : (assessment.primaryCue ?? exerciseDefinition.cues.ready),
+              : assessment.primaryCue ?? exerciseDefinition.cues.ready,
             currentLiftNorm: assessment.currentLift,
             currentRepPeakLift: runtimeStatsRef.current.currentRepPeakLift,
             lastRepPeakLift: runtimeStatsRef.current.lastRepPeakLift,
