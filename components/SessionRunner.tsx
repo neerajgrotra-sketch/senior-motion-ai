@@ -3,19 +3,16 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as posedetection from "@tensorflow-models/pose-detection";
+import "@tensorflow/tfjs-backend-webgl";
+
 import { buildPoseFrame } from "../lib/pose/buildPoseFrame";
 import { buildBiomechanicsFrame } from "../lib/biomechanics/buildBiomechanicsFrame";
 import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEngine";
 import { buildDemoSession } from "../lib/session/buildDemoSession";
 import { SessionRunnerState } from "../lib/session/sessionTypes";
 import { RuntimeFrameResult } from "../lib/runtime/runtimeTypes";
-import { RawPoseFrame, RawPoseKeypoint } from "../lib/pose/poseTypes";
-
-/**
- * IMPORTANT:
- * This component shows the integration pattern.
- * Replace `getMockPoseFrameFromVideo()` with your real BlazePose / MediaPipe detector call.
- */
+import { RawPoseFrame, RawPoseKeypoint, PoseLandmarkName } from "../lib/pose/poseTypes";
 
 type DetectorKeypoint = {
   name?: string;
@@ -29,14 +26,82 @@ type DetectorPoseResult = {
   keypoints: DetectorKeypoint[];
 };
 
+const BLAZEPOSE_KEYPOINT_NAMES: PoseLandmarkName[] = [
+  "nose",
+  "left_eye_inner",
+  "left_eye",
+  "left_eye_outer",
+  "right_eye_inner",
+  "right_eye",
+  "right_eye_outer",
+  "left_ear",
+  "right_ear",
+  "mouth_left",
+  "mouth_right",
+  "left_shoulder",
+  "right_shoulder",
+  "left_elbow",
+  "right_elbow",
+  "left_wrist",
+  "right_wrist",
+  "left_pinky",
+  "right_pinky",
+  "left_index",
+  "right_index",
+  "left_thumb",
+  "right_thumb",
+  "left_hip",
+  "right_hip",
+  "left_knee",
+  "right_knee",
+  "left_ankle",
+  "right_ankle",
+  "left_heel",
+  "right_heel",
+  "left_foot_index",
+  "right_foot_index",
+];
+
+function formatStatusLabel(status: string): string {
+  return status.replaceAll("_", " ");
+}
+
+function mapDetectorPoseToResult(
+  pose: posedetection.Pose,
+): DetectorPoseResult | null {
+  if (!pose.keypoints || pose.keypoints.length === 0) {
+    return null;
+  }
+
+  const keypoints: DetectorKeypoint[] = pose.keypoints.map((kp, index) => ({
+    name:
+      typeof kp.name === "string"
+        ? kp.name
+        : BLAZEPOSE_KEYPOINT_NAMES[index],
+    x: kp.x,
+    y: kp.y,
+    z: kp.z,
+    score: kp.score,
+  }));
+
+  return { keypoints };
+}
+
 function mapDetectorKeypointsToRaw(
   detectorPose: DetectorPoseResult,
   video: HTMLVideoElement,
 ): RawPoseFrame {
   const keypoints: RawPoseKeypoint[] = detectorPose.keypoints
-    .filter((kp) => typeof kp.name === "string")
+    .filter(
+      (
+        kp,
+      ): kp is Required<Pick<DetectorKeypoint, "x" | "y">> &
+        DetectorKeypoint & { name: PoseLandmarkName } =>
+        typeof kp.name === "string" &&
+        BLAZEPOSE_KEYPOINT_NAMES.includes(kp.name as PoseLandmarkName),
+    )
     .map((kp) => ({
-      name: kp.name as RawPoseKeypoint["name"],
+      name: kp.name,
       x: kp.x,
       y: kp.y,
       z: kp.z,
@@ -52,31 +117,34 @@ function mapDetectorKeypointsToRaw(
   };
 }
 
-/**
- * Replace this with real detector inference.
- * Example later:
- *   const poses = await detector.estimatePoses(video, { flipHorizontal: false });
- *   return poses[0] ?? null;
- */
-async function getMockPoseFrameFromVideo(
-  _video: HTMLVideoElement,
+async function estimatePoseFromVideo(
+  detector: posedetection.PoseDetector,
+  video: HTMLVideoElement,
 ): Promise<DetectorPoseResult | null> {
-  return null;
-}
+  const poses = await detector.estimatePoses(video, {
+    flipHorizontal: false,
+  });
 
-function formatStatusLabel(status: string): string {
-  return status.replaceAll("_", " ");
+  const pose = poses[0];
+  if (!pose) {
+    return null;
+  }
+
+  return mapDetectorPoseToResult(pose);
 }
 
 export default function SessionRunner() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const detectorRef = useRef<posedetection.PoseDetector | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const processingRef = useRef(false);
 
   const engineRef = useRef(createSessionRunnerEngine());
   const previousBiomechFrameRef = useRef<ReturnType<typeof buildBiomechanicsFrame> | null>(null);
 
   const [cameraStarted, setCameraStarted] = useState(false);
+  const [detectorReady, setDetectorReady] = useState(false);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,7 +201,6 @@ export default function SessionRunner() {
       }
 
       videoRef.current.srcObject = stream;
-
       await videoRef.current.play();
 
       setCameraStarted(true);
@@ -155,6 +222,8 @@ export default function SessionRunner() {
       animationFrameRef.current = null;
     }
 
+    processingRef.current = false;
+
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) {
         track.stop();
@@ -166,6 +235,7 @@ export default function SessionRunner() {
       videoRef.current.srcObject = null;
     }
 
+    previousBiomechFrameRef.current = null;
     setCameraStarted(false);
     engineRef.current.markCameraActive(false);
     setSessionState(engineRef.current.getState());
@@ -200,16 +270,33 @@ export default function SessionRunner() {
 
   const processLoop = useCallback(async () => {
     const video = videoRef.current;
+    const detector = detectorRef.current;
 
-    if (!video || !streamRef.current) {
+    if (!video || !streamRef.current || !detector) {
       animationFrameRef.current = requestAnimationFrame(() => {
         void processLoop();
       });
       return;
     }
 
+    if (processingRef.current) {
+      animationFrameRef.current = requestAnimationFrame(() => {
+        void processLoop();
+      });
+      return;
+    }
+
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      animationFrameRef.current = requestAnimationFrame(() => {
+        void processLoop();
+      });
+      return;
+    }
+
+    processingRef.current = true;
+
     try {
-      const detectorPose = await getMockPoseFrameFromVideo(video);
+      const detectorPose = await estimatePoseFromVideo(detector, video);
 
       if (detectorPose) {
         const rawPose = mapDetectorKeypointsToRaw(detectorPose, video);
@@ -232,6 +319,8 @@ export default function SessionRunner() {
       const message =
         err instanceof Error ? err.message : "Pose processing failed.";
       setError(message);
+    } finally {
+      processingRef.current = false;
     }
 
     animationFrameRef.current = requestAnimationFrame(() => {
@@ -240,14 +329,60 @@ export default function SessionRunner() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function initDetector() {
+      try {
+        setError(null);
+        setDetectorReady(false);
+
+        const detector = await posedetection.createDetector(
+          posedetection.SupportedModels.BlazePose,
+          {
+            runtime: "mediapipe",
+            modelType: "full",
+            enableSmoothing: true,
+            solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/pose",
+          },
+        );
+
+        if (cancelled) {
+          detector.dispose();
+          return;
+        }
+
+        detectorRef.current = detector;
+        setDetectorReady(true);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to initialize pose detector.";
+        setError(message);
+        setDetectorReady(false);
+      }
+    }
+
+    void initDetector();
+
+    return () => {
+      cancelled = true;
+      detectorRef.current?.dispose();
+      detectorRef.current = null;
+      setDetectorReady(false);
+    };
+  }, []);
+
+  useEffect(() => {
     loadSession();
   }, [loadSession]);
 
   useEffect(() => {
-    if (!cameraStarted) return;
+    if (!cameraStarted || !detectorReady) {
+      return;
+    }
 
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
 
     animationFrameRef.current = requestAnimationFrame(() => {
@@ -259,20 +394,28 @@ export default function SessionRunner() {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
+      processingRef.current = false;
     };
-  }, [cameraStarted, processLoop]);
+  }, [cameraStarted, detectorReady, processLoop]);
 
   useEffect(() => {
     return () => {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
+
+      processingRef.current = false;
 
       if (streamRef.current) {
         for (const track of streamRef.current.getTracks()) {
           track.stop();
         }
+        streamRef.current = null;
       }
+
+      detectorRef.current?.dispose();
+      detectorRef.current = null;
     };
   }, []);
 
@@ -285,7 +428,7 @@ export default function SessionRunner() {
         <div>
           <h1 className="text-2xl font-semibold">Session Runner</h1>
           <p className="text-sm text-gray-600">
-            Minimal runner pattern with persistent camera and frame loop.
+            Persistent camera + BlazePose + session engine.
           </p>
         </div>
 
@@ -317,9 +460,10 @@ export default function SessionRunner() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 onClick={startCamera}
-                className="rounded-xl border px-4 py-2 text-sm font-medium"
+                disabled={!detectorReady}
+                className="rounded-xl border px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
-                Start Camera
+                {detectorReady ? "Start Camera" : "Loading Pose Detector..."}
               </button>
 
               <button
@@ -435,6 +579,8 @@ export default function SessionRunner() {
           <pre className="mt-3 overflow-auto rounded-xl bg-gray-50 p-4 text-xs">
             {JSON.stringify(
               {
+                detectorReady,
+                cameraStarted,
                 sessionStatus: sessionState.status,
                 currentExercise: sessionState.currentItem?.exercise.title ?? null,
                 currentIndex: sessionState.progress.currentIndex,
