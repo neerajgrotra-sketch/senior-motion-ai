@@ -45,6 +45,7 @@ const VIDEO_HEIGHT = 720;
 const DETECTION_INTERVAL_MS = 50;
 const PERSON_ID = 1;
 const LOST_AFTER_MS = 2000;
+const MIRROR_MODE = true;
 
 type Props = {
   selectedExerciseId?: string;
@@ -395,10 +396,6 @@ export default function PoseTrackerPage({
 
     try {
       setError('');
-      releaseMediaResources();
-      resetRuntimeState(exerciseDefinition);
-      clearCanvas();
-
       const video = videoRef.current;
       if (!video) {
         throw new Error('Video element not available.');
@@ -419,29 +416,24 @@ export default function PoseTrackerPage({
       animationRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
       console.error(err);
-      releaseMediaResources();
-      resetRuntimeState(exerciseDefinition);
-      clearCanvas();
       setIsRunning(false);
       setError(mapCameraError(err));
     } finally {
       isStartingRef.current = false;
     }
-  }, [releaseMediaResources, resetRuntimeState, exerciseDefinition, clearCanvas]);
+  }, []);
 
-useEffect(() => {
-  if (autoStartedRef.current) return;
-  autoStartedRef.current = true;
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
 
-  void startCamera();
+    void startCamera();
 
-  return () => {
-    releaseMediaResources();
-    clearCanvas();
-  };
-  // intentionally mount-only: keep camera alive across exercise changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+    return () => {
+      releaseMediaResources();
+      clearCanvas();
+    };
+  }, [startCamera, releaseMediaResources, clearCanvas]);
 
   function handleToggleAutoFraming() {
     setAutoFramingEnabled((prev) => {
@@ -481,7 +473,10 @@ useEffect(() => {
     if (ts - lastRunRef.current >= DETECTION_INTERVAL_MS) {
       lastRunRef.current = ts;
 
-      const poses = await detector.estimatePoses(video, { flipHorizontal: false });
+      const poses = await detector.estimatePoses(video, {
+        flipHorizontal: MIRROR_MODE
+      });
+
       const pose = poses[0];
 
       if (pose?.keypoints?.length) {
@@ -613,12 +608,7 @@ useEffect(() => {
             statusText: externalStatusTextRef.current
               ? externalStatusTextRef.current
               : assessment.primaryCue ?? exerciseDefinition.cues.ready,
-            currentLiftNorm:
-              exerciseDefinition.side === 'left'
-                ? signals.leftHandLiftNorm
-                : exerciseDefinition.side === 'right'
-                  ? signals.rightHandLiftNorm
-                  : assessment.currentLift,
+            currentLiftNorm: assessment.currentLift,
             currentRepPeakLift: runtimeStatsRef.current.currentRepPeakLift,
             lastRepPeakLift: runtimeStatsRef.current.lastRepPeakLift,
             sessionPeakLift: runtimeStatsRef.current.sessionPeakLift,
@@ -699,6 +689,13 @@ useEffect(() => {
       frame = fallbackFrame;
     }
 
+    ctx.save();
+
+    if (MIRROR_MODE) {
+      ctx.translate(outputWidth, 0);
+      ctx.scale(-1, 1);
+    }
+
     ctx.drawImage(
       video,
       frame.x,
@@ -711,9 +708,11 @@ useEffect(() => {
       outputHeight
     );
 
-    if (!track) return;
+    if (track) {
+      drawOverlay(ctx, track, frame, outputWidth, outputHeight, outputHeight);
+    }
 
-    drawOverlay(ctx, track, frame, outputWidth, outputHeight, outputHeight);
+    ctx.restore();
   }
 
   function drawOverlay(
@@ -724,8 +723,6 @@ useEffect(() => {
     outputHeight: number,
     canvasHeight: number
   ) {
-    ctx.save();
-
     if (showBox) {
       const mappedBox = mapRectFromVideoToFrame(track.bbox, frame, outputWidth, outputHeight);
 
@@ -773,8 +770,6 @@ useEffect(() => {
     ctx.fillStyle = '#e5e7eb';
     ctx.font = '16px Arial';
     ctx.fillText(`Confidence: ${(track.confidence * 100).toFixed(0)}%`, 16, canvasHeight - 18);
-
-    ctx.restore();
   }
 
   return (
