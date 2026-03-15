@@ -56,6 +56,7 @@ export type IntentErrorCode =
   | "signal_missing"
   | "threshold_not_met"
   | "invalid_model"
+  | "trunk_lean"
   | "unknown";
 
 export type LiveIntentPhase =
