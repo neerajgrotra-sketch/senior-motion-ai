@@ -43,14 +43,11 @@ export type SignalDefinition = {
   config: Record<string, unknown>;
 };
 
-export type IntentSignalValue =
-  | number
-  | boolean
-  | string
-  | null
-  | undefined;
-
-export type IntentSignalMap = Record<string, IntentSignalValue>;
+/**
+ * Legacy evaluator expects numeric signal maps.
+ */
+export type IntentSignalValue = number;
+export type IntentSignalMap = Record<string, number>;
 
 export type IntentErrorCode =
   | "none"
@@ -89,7 +86,7 @@ export type LiveIntentState = {
   lastRepTimestampMs?: number | null;
 
   feedbackMessage?: string;
-  latestSignals?: IntentSignalMap;
+  latestSignals?: Record<string, number>;
   lastErrorCode?: IntentErrorCode | undefined;
   completed?: boolean;
 
@@ -138,7 +135,7 @@ export type IntentEvaluationResult = {
   ok: boolean;
   errorCode?: IntentErrorCode;
   state: LiveIntentState;
-  signals: IntentSignalMap;
+  signals: Record<string, number>;
   matchedRules?: string[];
   confidence?: number;
   debug?: Record<string, unknown>;
