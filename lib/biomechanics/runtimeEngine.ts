@@ -7,12 +7,20 @@ import type {
   RuntimeState
 } from './types';
 
-function getActiveLift(signals: BiomechanicsSignals, definition: ExerciseDefinition): number {
-  return definition.side === 'left' ? signals.leftHandLiftNorm : signals.rightHandLiftNorm;
-}
-
-function getOppositeLift(signals: BiomechanicsSignals, definition: ExerciseDefinition): number {
-  return definition.side === 'left' ? signals.rightHandLiftNorm : signals.leftHandLiftNorm;
+function getPrimaryLift(
+  definition: ExerciseDefinition,
+  signals: BiomechanicsSignals
+): number {
+  switch (definition.side) {
+    case 'left':
+      return signals.leftHandLiftNorm;
+    case 'right':
+      return signals.rightHandLiftNorm;
+    case 'bilateral':
+      return signals.bothHandsLiftNorm;
+    default:
+      return signals.rightHandLiftNorm;
+  }
 }
 
 function detectErrors(
@@ -34,13 +42,13 @@ function detectErrors(
 
   const targetLiftNorm = definition.thresholds.targetLiftNorm ?? 0.55;
   const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
-  const activeLift = getActiveLift(signals, definition);
+  const currentLift = getPrimaryLift(definition, signals);
 
   if (
     state.phase === 'ready' &&
     definition.thresholds.noResponseMs != null &&
     signals.timeSincePhaseStartMs >= definition.thresholds.noResponseMs &&
-    activeLift < targetLiftNorm * 0.4
+    currentLift < targetLiftNorm * 0.4
   ) {
     detected.push({
       code: 'no_response',
@@ -49,7 +57,11 @@ function detectErrors(
     });
   }
 
-  if (state.phase === 'ascending' && signals.timeSincePhaseStartMs > 2200 && activeLift < targetLiftNorm) {
+  if (
+    state.phase === 'ascending' &&
+    signals.timeSincePhaseStartMs > 2200 &&
+    currentLift < targetLiftNorm
+  ) {
     detected.push({
       code: 'insufficient_range',
       severity: 'medium',
@@ -69,7 +81,11 @@ function detectErrors(
     });
   }
 
-  if (state.phase === 'descending' && signals.timeSincePhaseStartMs > 1800 && activeLift > returnLiftNorm) {
+  if (
+    state.phase === 'descending' &&
+    signals.timeSincePhaseStartMs > 1800 &&
+    currentLift > returnLiftNorm
+  ) {
     detected.push({
       code: 'incomplete_return',
       severity: 'medium',
@@ -135,15 +151,15 @@ function getPrimaryCue(
   const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
   const targetLiftNorm = definition.thresholds.targetLiftNorm ?? 0.55;
   const minHoldMs = definition.thresholds.minHoldMs ?? 0;
-
-  const activeLift = getActiveLift(signals, definition);
-  const oppositeLift = getOppositeLift(signals, definition);
+  const currentLift = getPrimaryLift(definition, signals);
 
   const prioritizedErrors = sortErrorsForPhase(errors, phase);
   const topError = prioritizedErrors[0];
 
   if (phase === 'descending') {
-    if (topError?.code === 'incomplete_return') return topError.message;
+    if (topError?.code === 'incomplete_return') {
+      return topError.message;
+    }
     return definition.cues.descend;
   }
 
@@ -163,11 +179,14 @@ function getPrimaryCue(
       return topError.message;
     }
 
-    if (topError?.code === 'trunk_compensation' && activeLift < targetLiftNorm * 0.7) {
+    if (
+      topError?.code === 'trunk_compensation' &&
+      currentLift < targetLiftNorm * 0.7
+    ) {
       return topError.message;
     }
 
-    if (activeLift < targetLiftNorm) {
+    if (currentLift < targetLiftNorm) {
       return definition.cues.ascend;
     }
 
@@ -175,16 +194,13 @@ function getPrimaryCue(
   }
 
   if (phase === 'ready') {
-    if (activeLift > returnLiftNorm + 0.05) {
+    if (currentLift > returnLiftNorm + 0.05) {
       return definition.side === 'left'
         ? 'Lower your left hand to start.'
-        : 'Lower your right hand to start.';
+        : definition.side === 'right'
+          ? 'Lower your right hand to start.'
+          : 'Lower your hands to start.';
     }
-
-    if (oppositeLift > (definition.thresholds.wrongSideLiftNorm ?? 0.3)) {
-      return definition.side === 'left' ? 'Use your left hand.' : 'Use your right hand.';
-    }
-
     if (topError) return topError.message;
     return definition.cues.ready;
   }
@@ -194,6 +210,7 @@ function getPrimaryCue(
   }
 
   if (topError) return topError.message;
+
   return null;
 }
 
@@ -213,13 +230,14 @@ export function advanceExerciseRuntime(params: {
   const targetLiftNorm = definition.thresholds.targetLiftNorm ?? 0.55;
   const returnLiftNorm = definition.thresholds.returnLiftNorm ?? 0.12;
   const minHoldMs = definition.thresholds.minHoldMs ?? 0;
+  const currentLift = getPrimaryLift(definition, signals);
 
-  const activeLift = getActiveLift(signals, definition);
-  const handDown = activeLift <= returnLiftNorm;
-  const handRaisedEnough = activeLift >= targetLiftNorm;
+  const handDown = currentLift <= returnLiftNorm;
+  const handRaisedEnough = currentLift >= targetLiftNorm;
 
   const postureAllowed =
-    definition.allowedPostures.includes(signals.posture) || signals.posture === 'unknown';
+    definition.allowedPostures.includes(signals.posture) ||
+    signals.posture === 'unknown';
 
   if (state.phase === 'idle') {
     if (postureAllowed) {
@@ -264,7 +282,6 @@ export function advanceExerciseRuntime(params: {
   }
 
   const errors = detectErrors(definition, signals, state);
-  const currentLift = activeLift;
   const progress = Math.max(0, Math.min(1, currentLift / Math.max(targetLiftNorm, 0.01)));
   const primaryCue = getPrimaryCue(definition, errors, state.phase, signals);
 
