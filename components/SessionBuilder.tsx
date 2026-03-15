@@ -1,22 +1,5 @@
 "use client";
 
-/**
- * SessionRunner.tsx
- *
- * Purpose
- * - Render the current exercise runner screen
- * - Use the new pose -> biomechanics -> runtime -> session engine path
- * - Accept a builder session from app/page.tsx
- * - Auto-start camera when the user starts the session
- * - Stay defensive if any exercise mapping is missing
- *
- * Notes
- * - This keeps the current runner architecture intact
- * - It falls back to the demo session if no builder session is provided
- * - onAbort returns to the builder
- * - onFinish is accepted for future wiring, but not yet fully emitted
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePosePipeline } from "../hooks/usePosePipeline";
 import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEngine";
