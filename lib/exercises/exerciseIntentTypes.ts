@@ -67,6 +67,7 @@ export type IntentErrorCode =
   | "wrong_side"
   | "no_hold"
   | "insufficient_range"
+  | "too_fast"
   | "unknown";
 
 /* ------------------------------------------------ */
@@ -180,6 +181,7 @@ export type ExerciseIntentModel = {
     detectWrongSide?: boolean;
     detectNoHold?: boolean;
     detectInsufficientRange?: boolean;
+    detectTooFast?: boolean;
     [key: string]: boolean | undefined;
   };
 
@@ -198,6 +200,7 @@ export type ExerciseIntentModel = {
     wrongSide?: string;
     noHold?: string;
     insufficientRange?: string;
+    tooFast?: string;
     reset?: string;
     [key: string]: string | undefined;
   };
