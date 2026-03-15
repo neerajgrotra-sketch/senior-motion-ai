@@ -5,10 +5,8 @@ import { createRuntimeEngine } from "../runtime/createRuntimeEngine";
 import { RuntimeFrameResult } from "../runtime/runtimeTypes";
 import {
   SessionDefinition,
-  SessionExerciseItem,
   SessionProgress,
   SessionRunnerState,
-  SessionStatus,
 } from "./sessionTypes";
 
 interface SessionRunnerFrameResult {
@@ -102,26 +100,27 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
 
     syncCurrentItemFromIndex();
 
-    if (state.currentItem) {
-      runtime.setExercise(
-        state.currentItem.exercise,
-        state.currentItem.repTarget,
-      );
+    const currentItem = state.currentItem;
+    if (currentItem) {
+      runtime.setExercise(currentItem.exercise, currentItem.repTarget);
     }
 
     lastCountedRepTotal = 0;
   }
 
   function startSession(startTimestampMs?: number) {
-    if (!state.session || !state.currentItem) return;
+    const currentItem = state.currentItem;
+    if (!state.session || !currentItem) return;
+
+    const startedAt = startTimestampMs ?? Date.now();
 
     state = {
       ...state,
       status: "running",
       progress: {
         ...state.progress,
-        sessionStartedAtMs: startTimestampMs ?? Date.now(),
-        currentExerciseStartedAtMs: startTimestampMs ?? Date.now(),
+        sessionStartedAtMs: startedAt,
+        currentExerciseStartedAtMs: startedAt,
       },
       poseLoopActive: true,
       transition: {
@@ -131,12 +130,13 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
       },
     };
 
-    runtime.setExercise(state.currentItem.exercise, state.currentItem.repTarget);
+    runtime.setExercise(currentItem.exercise, currentItem.repTarget);
     lastCountedRepTotal = 0;
   }
 
   function pauseSession() {
     if (state.status !== "running") return;
+
     state = {
       ...state,
       status: "paused",
@@ -145,6 +145,7 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
 
   function resumeSession() {
     if (state.status !== "paused") return;
+
     state = {
       ...state,
       status: "running",
@@ -168,8 +169,7 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
   }
 
   function advanceToNextExercise(frameTimestampMs: number): boolean {
-    if (!state.session) return false;
-    if (!state.currentItem) return false;
+    if (!state.session || !state.currentItem) return false;
 
     const completedId = state.currentItem.id;
     const nextIndex = state.progress.currentIndex + 1;
