@@ -35,7 +35,8 @@ export type SignalType =
   | string;
 
 export type SignalDefinition = {
-  key: string;
+  id: string;
+  key?: string;
   type: SignalType;
   label?: string;
   description?: string;
