@@ -195,13 +195,8 @@ function getCoachMessage(params: {
     debug.statusText && debug.statusText.trim().length > 0 ? debug.statusText : null;
 
   if (phaseName === 'idle') {
-    const lowerToStart =
-      runtimeHeadline &&
-      runtimeHeadline.toLowerCase().includes('lower') &&
-      runtimeHeadline.toLowerCase().includes('start');
-
     return {
-      headline: lowerToStart ? runtimeHeadline : instructionCopy.action,
+      headline: runtimeHeadline ?? instructionCopy.action,
       subline:
         holdTargetMs > 0
           ? `Exercise ${currentStepIndex + 1} of ${totalSteps} • Reps ${completed}/${targetReps} • Hold ${targetHoldSeconds}s`
@@ -447,6 +442,10 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     if (!latestDebug) return;
     if (stepCompletionHandledRef.current) return;
 
+    // CRITICAL FIX:
+    // Ignore stale debug from a previous step.
+    if (latestDebug.exerciseId !== currentStep.exerciseId) return;
+
     if (latestDebug.repCount >= currentStep.targetReps) {
       stepCompletionHandledRef.current = true;
       handleExerciseComplete({
@@ -522,12 +521,17 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
     }
 
     resetIntentRuntime();
+    stepCompletionHandledRef.current = true; // temporarily lock until new step mounts
+    setLatestDebug(null);
     setCurrentStepIndex((prev) => prev + 1);
     setRunnerPhase('precheck');
     setCountdownValue(3);
     setRestSecondsLeft(0);
-    setLatestDebug(null);
-    stepCompletionHandledRef.current = false;
+
+    // unlock after remount cycle
+    window.setTimeout(() => {
+      stepCompletionHandledRef.current = false;
+    }, 0);
   }
 
   function handleExerciseComplete(result: {
@@ -675,6 +679,7 @@ export default function SessionRunner({ session, onComplete, onCancel }: Props) 
             </div>
 
             <PoseTrackerPage
+              key={currentStep.id}
               selectedExerciseId={currentStep.exerciseId}
               sessionMode
               targetReps={runnerPhase === 'active' ? currentStep.targetReps : undefined}
