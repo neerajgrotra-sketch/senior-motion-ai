@@ -75,6 +75,8 @@ type RuntimeStats = {
 };
 
 function getDefinitionForExerciseId(_exerciseId?: string): ExerciseDefinition {
+  // Temporary during migration to the new biomechanics engine.
+  // Extend this when you add more biomechanics-backed exercise definitions.
   return RAISE_RIGHT_HAND_DEFINITION;
 }
 
@@ -155,6 +157,7 @@ export default function PoseTrackerPage({
   selectedExerciseId,
   sessionMode = false,
   targetReps,
+  targetHoldSeconds,
   onExerciseComplete,
   externalStatusText,
   exerciseEnabled = true,
@@ -192,6 +195,7 @@ export default function PoseTrackerPage({
   const onExerciseCompleteRef = useRef<Props['onExerciseComplete']>(onExerciseComplete);
   const externalStatusTextRef = useRef(externalStatusText);
   const exerciseEnabledRef = useRef(exerciseEnabled);
+  const targetHoldSecondsRef = useRef(targetHoldSeconds);
 
   useEffect(() => {
     onPoseLandmarksChangeRef.current = onPoseLandmarksChange;
@@ -213,6 +217,10 @@ export default function PoseTrackerPage({
     exerciseEnabledRef.current = exerciseEnabled;
   }, [exerciseEnabled]);
 
+  useEffect(() => {
+    targetHoldSecondsRef.current = targetHoldSeconds;
+  }, [targetHoldSeconds]);
+
   const exerciseDefinition = useMemo(() => {
     return getDefinitionForExerciseId(selectedExerciseId);
   }, [selectedExerciseId]);
@@ -224,33 +232,6 @@ export default function PoseTrackerPage({
   const [autoFramingEnabled, setAutoFramingEnabled] = useState(false);
   const [error, setError] = useState('');
   const [debug, setDebug] = useState<DebugState>(getInitialDebugState(exerciseDefinition.id));
-
-  useEffect(() => {
-    resetRuntimeState(exerciseDefinition);
-    setDebug((prev) => ({
-      ...getInitialDebugState(exerciseDefinition.id),
-      fps: prev.fps,
-      tracking: prev.tracking
-    }));
-  }, [exerciseDefinition]);
-
-  useEffect(() => {
-    if (!sessionMode || completedCalledRef.current) return;
-    if (!targetReps) return;
-
-    if (debug.repCount >= targetReps) {
-      completedCalledRef.current = true;
-      onExerciseCompleteRef.current?.({
-        completedReps: debug.repCount,
-        sessionPeakLift: debug.sessionPeakLift,
-        lastRepPeakLift: debug.lastRepPeakLift
-      });
-    }
-  }, [debug.repCount, debug.sessionPeakLift, debug.lastRepPeakLift, targetReps, sessionMode]);
-
-  useEffect(() => {
-    onDebugStateChange?.(debug);
-  }, [debug, onDebugStateChange]);
 
   const resetRuntimeState = useCallback((definition: ExerciseDefinition) => {
     activeTrackRef.current = null;
@@ -273,6 +254,33 @@ export default function PoseTrackerPage({
 
     setDebug(getInitialDebugState(definition.id));
   }, []);
+
+  useEffect(() => {
+    resetRuntimeState(exerciseDefinition);
+    setDebug((prev) => ({
+      ...getInitialDebugState(exerciseDefinition.id),
+      fps: prev.fps,
+      tracking: prev.tracking
+    }));
+  }, [exerciseDefinition, resetRuntimeState]);
+
+  useEffect(() => {
+    if (!sessionMode || completedCalledRef.current) return;
+    if (!targetReps) return;
+
+    if (debug.repCount >= targetReps) {
+      completedCalledRef.current = true;
+      onExerciseCompleteRef.current?.({
+        completedReps: debug.repCount,
+        sessionPeakLift: debug.sessionPeakLift,
+        lastRepPeakLift: debug.lastRepPeakLift
+      });
+    }
+  }, [debug.repCount, debug.sessionPeakLift, debug.lastRepPeakLift, targetReps, sessionMode]);
+
+  useEffect(() => {
+    onDebugStateChange?.(debug);
+  }, [debug, onDebugStateChange]);
 
   const releaseMediaResources = useCallback(() => {
     if (animationRef.current != null) {
@@ -532,8 +540,19 @@ export default function PoseTrackerPage({
           };
 
           if (exerciseEnabledRef.current) {
+            const runtimeDefinition: ExerciseDefinition = {
+              ...exerciseDefinition,
+              thresholds: {
+                ...exerciseDefinition.thresholds,
+                minHoldMs:
+                  targetHoldSecondsRef.current != null
+                    ? Math.max(0, Math.round(targetHoldSecondsRef.current * 1000))
+                    : exerciseDefinition.thresholds.minHoldMs
+              }
+            };
+
             const runtimeResult = advanceExerciseRuntime({
-              definition: exerciseDefinition,
+              definition: runtimeDefinition,
               signals,
               state: runtimeStateRef.current
             });
@@ -864,4 +883,4 @@ const cardStyle: CSSProperties = {
   border: '1px solid #1f2942',
   borderRadius: 16,
   padding: 16
-};
+};      
