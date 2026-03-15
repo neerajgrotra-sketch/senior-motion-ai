@@ -4,16 +4,14 @@
  * SessionRunner.tsx
  *
  * Purpose
- * - Render the current MVP exercise session screen
+ * - Render the MVP exercise session screen
  * - Keep camera / pose pipeline separate from session orchestration
  * - Feed latest BiomechanicsFrame values into the session runner engine
- * - Show current exercise, rep progress, coaching, and lightweight debug info
+ * - Show current exercise, rep progress, coaching, and debug info
  *
  * Notes
- * - This component uses the NEW architecture path:
- *   usePosePipeline -> biomechanics frame -> session runner engine -> UI
- * - It does NOT depend on the legacy intent-engine session hook.
- * - The camera should be started once and remain active while exercises switch.
+ * - This version uses inline styles instead of Tailwind so it renders
+ *   consistently even if Tailwind is not configured in the repo.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -47,6 +45,7 @@ export default function SessionRunner() {
     engineRef.current.getState(),
   );
   const [runtimeResult, setRuntimeResult] = useState<RuntimeFrameResult | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   const loadSession = useCallback(() => {
     engineRef.current.loadSession(demoSession);
@@ -124,60 +123,56 @@ export default function SessionRunner() {
     : "n/a";
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <div style={styles.page}>
+      <div style={styles.container}>
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            AI Physiotherapy Session
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <h1 style={styles.title}>AI Physiotherapy Session</h1>
+          <p style={styles.subtitle}>
             Camera, pose tracking, exercise runtime, and live coaching.
           </p>
         </div>
 
         {pipelineError ? (
-          <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
-            {pipelineError}
-          </div>
+          <div style={styles.errorBox}>{pipelineError}</div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.25fr_0.95fr]">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div style={styles.mainGrid}>
+          <section style={styles.panel}>
+            <div style={styles.panelHeader}>
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Live Camera</h2>
-                <p className="text-sm text-slate-500">
+                <h2 style={styles.panelTitle}>Live Camera</h2>
+                <p style={styles.panelSubtitle}>
                   Start once and keep tracking across the full session.
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              <div style={styles.badgeRow}>
+                <span style={styles.badge}>
                   {detectorReady ? "Detector Ready" : "Loading Detector"}
                 </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                <span style={styles.badge}>
                   {isCameraOn ? "Camera Active" : "Camera Off"}
                 </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                <span style={styles.badge}>
                   {isRunning ? "Pipeline Running" : "Pipeline Idle"}
                 </span>
               </div>
             </div>
 
-            <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
+            <div style={styles.videoFrame}>
               <video
                 ref={videoRef}
                 autoPlay
                 muted
                 playsInline
-                className="h-full w-full object-cover"
+                style={styles.video}
               />
 
               {!isCameraOn ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-center text-slate-200">
+                <div style={styles.videoOverlay}>
                   <div>
-                    <div className="text-lg font-medium">Camera is off</div>
-                    <div className="mt-1 text-sm text-slate-400">
+                    <div style={styles.videoOverlayTitle}>Camera is off</div>
+                    <div style={styles.videoOverlayText}>
                       Start camera to begin pose tracking
                     </div>
                   </div>
@@ -185,171 +180,375 @@ export default function SessionRunner() {
               ) : null}
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div style={styles.buttonRow}>
               <button
                 onClick={() => void startCamera()}
                 disabled={!detectorReady}
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  ...styles.primaryButton,
+                  ...(!detectorReady ? styles.disabledButton : {}),
+                }}
               >
                 {detectorReady ? "Start Camera" : "Loading Pose Detector..."}
               </button>
 
-              <button
-                onClick={stopCamera}
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
-              >
+              <button onClick={stopCamera} style={styles.secondaryButton}>
                 Stop Camera
               </button>
             </div>
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <section style={styles.panel}>
+            <div style={styles.panelHeader}>
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Session Guide</h2>
-                <p className="text-sm text-slate-500">
+                <h2 style={styles.panelTitle}>Session Guide</h2>
+                <p style={styles.panelSubtitle}>
                   Live exercise progress and coaching feedback.
                 </p>
               </div>
 
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {formatStatusLabel(sessionState.status)}
-              </span>
+              <span style={styles.badge}>{formatStatusLabel(sessionState.status)}</span>
             </div>
 
-            <div className="space-y-4">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">
-                  Current Exercise
-                </div>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">
-                  {currentExerciseTitle}
-                </div>
-              </div>
+            <div style={styles.infoCard}>
+              <div style={styles.cardLabel}>Current Exercise</div>
+              <div style={styles.exerciseTitle}>{currentExerciseTitle}</div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Reps
-                  </div>
-                  <div className="mt-2 text-3xl font-semibold text-slate-900">
-                    {currentRepCount} / {currentRepTarget}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Progress
-                  </div>
-                  <div className="mt-2 text-3xl font-semibold text-slate-900">
-                    {completedExercises} / {totalExercises}
-                  </div>
+            <div style={styles.statsGrid}>
+              <div style={styles.infoCard}>
+                <div style={styles.cardLabel}>Reps</div>
+                <div style={styles.statValue}>
+                  {currentRepCount} / {currentRepTarget}
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-blue-50 p-4">
-                <div className="text-xs uppercase tracking-wide text-blue-700">
-                  Coaching
-                </div>
-                <div className="mt-2 text-base font-medium text-blue-950">
-                  {coachingMessage}
+              <div style={styles.infoCard}>
+                <div style={styles.cardLabel}>Progress</div>
+                <div style={styles.statValue}>
+                  {completedExercises} / {totalExercises}
                 </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Runtime Phase
-                  </div>
-                  <div className="mt-2 text-base font-medium text-slate-900">
-                    {currentPhase}
-                  </div>
-                </div>
+            <div style={styles.coachingCard}>
+              <div style={styles.cardLabelBlue}>Coaching</div>
+              <div style={styles.coachingText}>{coachingMessage}</div>
+            </div>
 
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Pose Pipeline
-                  </div>
-                  <div className="mt-2 text-base font-medium text-slate-900">
-                    {isRunning ? "Running" : isCameraOn ? "Camera on / waiting" : "Stopped"}
-                  </div>
-                </div>
+            <div style={styles.statsGrid}>
+              <div style={styles.infoCard}>
+                <div style={styles.cardLabel}>Runtime Phase</div>
+                <div style={styles.smallStat}>{currentPhase}</div>
               </div>
 
-              <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  onClick={loadSession}
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
-                >
-                  Load Demo Session
-                </button>
-
-                <button
-                  onClick={startSession}
-                  disabled={!sessionLoaded || !isCameraOn}
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Start Session
-                </button>
-
-                <button
-                  onClick={pauseSession}
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
-                >
-                  Pause
-                </button>
-
-                <button
-                  onClick={resumeSession}
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
-                >
-                  Resume
-                </button>
-
-                <button
-                  onClick={abortSession}
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900"
-                >
-                  Abort
-                </button>
+              <div style={styles.infoCard}>
+                <div style={styles.cardLabel}>Pose Pipeline</div>
+                <div style={styles.smallStat}>
+                  {isRunning ? "Running" : isCameraOn ? "Camera on / waiting" : "Stopped"}
+                </div>
               </div>
+            </div>
+
+            <div style={styles.buttonRow}>
+              <button onClick={loadSession} style={styles.secondaryButton}>
+                Load Demo Session
+              </button>
+
+              <button
+                onClick={startSession}
+                disabled={!sessionLoaded || !isCameraOn}
+                style={{
+                  ...styles.primaryButton,
+                  ...(!sessionLoaded || !isCameraOn ? styles.disabledButton : {}),
+                }}
+              >
+                Start Session
+              </button>
+
+              <button onClick={pauseSession} style={styles.secondaryButton}>
+                Pause
+              </button>
+
+              <button onClick={resumeSession} style={styles.secondaryButton}>
+                Resume
+              </button>
+
+              <button onClick={abortSession} style={styles.secondaryButton}>
+                Abort
+              </button>
             </div>
           </section>
         </div>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Debug Snapshot</h3>
+        <section style={styles.panel}>
+          <div style={styles.debugHeader}>
+            <h3 style={styles.panelTitle}>Debug Snapshot</h3>
+            <button
+              onClick={() => setShowDebug((prev) => !prev)}
+              style={styles.secondaryButton}
+            >
+              {showDebug ? "Hide Debug" : "Show Debug"}
+            </button>
+          </div>
 
-          <pre className="mt-4 overflow-auto rounded-2xl bg-slate-50 p-4 text-xs text-slate-800">
-            {JSON.stringify(
-              {
-                detectorReady,
-                isCameraOn,
-                isRunning,
-                sessionLoaded,
-                sessionStatus: sessionState.status,
-                currentExercise: sessionState.currentItem?.exercise.title ?? null,
-                currentIndex: sessionState.progress.currentIndex,
-                totalExercises: sessionState.progress.totalExercises,
-                completedExerciseIds: sessionState.progress.completedExerciseIds,
-                totalRepsCompleted: sessionState.progress.totalRepsCompleted,
-                runtimeStatus: runtimeResult?.status ?? null,
-                repState: runtimeResult?.exerciseState?.repState ?? null,
-                coachingMessage,
-                latestTimestampMs: latestBiomechanicsFrame?.timestampMs ?? null,
-                leftLift:
-                  latestBiomechanicsFrame?.arms.left.verticalLiftNormalized ?? null,
-                rightLift:
-                  latestBiomechanicsFrame?.arms.right.verticalLiftNormalized ?? null,
-                torsoLean: latestBiomechanicsFrame?.torso.trunkLeanDeg ?? null,
-                debug: runtimeResult?.debug ?? null,
-              },
-              null,
-              2,
-            )}
-          </pre>
+          {showDebug ? (
+            <pre style={styles.debugBox}>
+              {JSON.stringify(
+                {
+                  detectorReady,
+                  isCameraOn,
+                  isRunning,
+                  sessionLoaded,
+                  sessionStatus: sessionState.status,
+                  currentExercise: sessionState.currentItem?.exercise.title ?? null,
+                  currentIndex: sessionState.progress.currentIndex,
+                  totalExercises: sessionState.progress.totalExercises,
+                  completedExerciseIds: sessionState.progress.completedExerciseIds,
+                  totalRepsCompleted: sessionState.progress.totalRepsCompleted,
+                  runtimeStatus: runtimeResult?.status ?? null,
+                  repState: runtimeResult?.exerciseState?.repState ?? null,
+                  coachingMessage,
+                  latestTimestampMs: latestBiomechanicsFrame?.timestampMs ?? null,
+                  leftLift:
+                    latestBiomechanicsFrame?.arms.left.verticalLiftNormalized ?? null,
+                  rightLift:
+                    latestBiomechanicsFrame?.arms.right.verticalLiftNormalized ?? null,
+                  torsoLean: latestBiomechanicsFrame?.torso.trunkLeanDeg ?? null,
+                  debug: runtimeResult?.debug ?? null,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          ) : (
+            <div style={styles.debugCollapsedText}>
+              Debug output is hidden for normal demo use.
+            </div>
+          )}
         </section>
       </div>
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#f8fafc",
+    padding: "24px",
+    fontFamily: "Inter, system-ui, sans-serif",
+    color: "#0f172a",
+  },
+  container: {
+    maxWidth: "1400px",
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "24px",
+  },
+  title: {
+    margin: 0,
+    fontSize: "36px",
+    fontWeight: 700,
+    lineHeight: 1.1,
+  },
+  subtitle: {
+    margin: "8px 0 0 0",
+    color: "#475569",
+    fontSize: "15px",
+  },
+  errorBox: {
+    border: "1px solid #fca5a5",
+    background: "#fef2f2",
+    color: "#b91c1c",
+    borderRadius: "16px",
+    padding: "16px",
+    fontSize: "14px",
+  },
+  mainGrid: {
+    display: "grid",
+    gridTemplateColumns: "1.25fr 0.95fr",
+    gap: "24px",
+  },
+  panel: {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "24px",
+    padding: "20px",
+    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
+  },
+  panelHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "16px",
+    flexWrap: "wrap",
+    marginBottom: "16px",
+  },
+  panelTitle: {
+    margin: 0,
+    fontSize: "24px",
+    fontWeight: 600,
+    color: "#0f172a",
+  },
+  panelSubtitle: {
+    margin: "6px 0 0 0",
+    fontSize: "14px",
+    color: "#64748b",
+  },
+  badgeRow: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  badge: {
+    display: "inline-block",
+    padding: "8px 12px",
+    borderRadius: "999px",
+    background: "#f1f5f9",
+    color: "#334155",
+    fontSize: "12px",
+    fontWeight: 600,
+  },
+  videoFrame: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: "16 / 9",
+    overflow: "hidden",
+    borderRadius: "20px",
+    background: "#020617",
+  },
+  video: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  videoOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(2, 6, 23, 0.82)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    color: "#e2e8f0",
+    padding: "24px",
+  },
+  videoOverlayTitle: {
+    fontSize: "22px",
+    fontWeight: 600,
+  },
+  videoOverlayText: {
+    marginTop: "8px",
+    fontSize: "14px",
+    color: "#94a3b8",
+  },
+  buttonRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "12px",
+    marginTop: "16px",
+  },
+  primaryButton: {
+    border: "none",
+    borderRadius: "16px",
+    background: "#2563eb",
+    color: "#ffffff",
+    padding: "12px 18px",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  secondaryButton: {
+    border: "1px solid #cbd5e1",
+    borderRadius: "16px",
+    background: "#ffffff",
+    color: "#0f172a",
+    padding: "12px 18px",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  disabledButton: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+  },
+  infoCard: {
+    background: "#f8fafc",
+    borderRadius: "18px",
+    padding: "16px",
+  },
+  cardLabel: {
+    fontSize: "12px",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#64748b",
+  },
+  cardLabelBlue: {
+    fontSize: "12px",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#1d4ed8",
+  },
+  exerciseTitle: {
+    marginTop: "10px",
+    fontSize: "30px",
+    fontWeight: 700,
+    color: "#0f172a",
+    lineHeight: 1.15,
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "16px",
+    marginTop: "16px",
+  },
+  statValue: {
+    marginTop: "10px",
+    fontSize: "34px",
+    fontWeight: 700,
+    color: "#0f172a",
+  },
+  smallStat: {
+    marginTop: "10px",
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "#0f172a",
+  },
+  coachingCard: {
+    marginTop: "16px",
+    background: "#eff6ff",
+    borderRadius: "18px",
+    padding: "16px",
+  },
+  coachingText: {
+    marginTop: "10px",
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "#172554",
+    lineHeight: 1.4,
+  },
+  debugHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "16px",
+    flexWrap: "wrap",
+  },
+  debugCollapsedText: {
+    marginTop: "16px",
+    color: "#64748b",
+    fontSize: "14px",
+  },
+  debugBox: {
+    marginTop: "16px",
+    background: "#f8fafc",
+    borderRadius: "18px",
+    padding: "16px",
+    fontSize: "12px",
+    overflowX: "auto",
+    color: "#0f172a",
+  },
+};
