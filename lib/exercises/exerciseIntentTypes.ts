@@ -119,6 +119,15 @@ export type ExerciseIntentModel = {
   // newer/alternate field name
   signalDefinitions?: SignalDefinition[];
 
+  signalRefs: {
+    primaryLiftSignalId: string;
+    oppositeLiftSignalId?: string;
+    symmetrySignalId?: string;
+    postureSignalId?: string;
+    confidenceSignalId?: string;
+    [key: string]: string | undefined;
+  };
+
   thresholds?: IntentThresholdRule[];
   transitions?: IntentTransitionRule[];
   metadata?: Record<string, unknown>;
