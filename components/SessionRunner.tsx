@@ -8,17 +8,18 @@
  * - Use the new pose -> biomechanics -> runtime -> session engine path
  * - Accept page-level props so the app shell can route Builder -> Runner -> Results
  *
- * Important note
- * - `session` is accepted for app-shell compatibility, but this runner still uses
- *   the current demo session from the new runtime architecture.
- * - `onFinish` is not fully wired to a real SessionResult yet.
- * - `onAbort` is wired so the user can return to the builder.
+ * Notes
+ * - If a builder session is provided, it is converted into the new runtime session format.
+ * - If no builder session is provided, the runner falls back to the demo session.
+ * - onAbort returns to the builder.
+ * - onFinish is accepted for future wiring, but not yet used to generate a full SessionResult.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePosePipeline } from "../hooks/usePosePipeline";
 import { createSessionRunnerEngine } from "../lib/session/createSessionRunnerEngine";
 import { buildDemoSession } from "../lib/session/buildDemoSession";
+import { convertBuilderSession } from "../lib/session/convertBuilderSession";
 import type { SessionRunnerState } from "../lib/session/sessionTypes";
 import type { RuntimeFrameResult } from "../lib/runtime/runtimeTypes";
 import type { SessionDefinition, SessionResult } from "../lib/sessionTypes";
@@ -34,7 +35,6 @@ function formatStatusLabel(value: string): string {
 }
 
 export default function SessionRunner({ session, onFinish, onAbort }: Props) {
-  void session;
   void onFinish;
 
   const {
@@ -48,16 +48,14 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
     latestBiomechanicsFrame,
   } = usePosePipeline();
 
-import { convertBuilderSession } from "../lib/session/convertBuilderSession";
+  const engineRef = useRef(createSessionRunnerEngine());
 
-const runtimeSession = useMemo(() => {
-  if (session) {
-    return convertBuilderSession(session);
-  }
-  return buildDemoSession();
-}, [session]);
-
-engineRef.current.loadSession(runtimeSession);
+  const runtimeSession = useMemo(() => {
+    if (session && session.steps.length > 0) {
+      return convertBuilderSession(session);
+    }
+    return buildDemoSession();
+  }, [session]);
 
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sessionState, setSessionState] = useState<SessionRunnerState>(
@@ -67,11 +65,11 @@ engineRef.current.loadSession(runtimeSession);
   const [showDebug, setShowDebug] = useState(false);
 
   const loadSession = useCallback(() => {
-    engineRef.current.loadSession(demoSession);
+    engineRef.current.loadSession(runtimeSession);
     setSessionLoaded(true);
     setSessionState(engineRef.current.getState());
     setRuntimeResult(null);
-  }, [demoSession]);
+  }, [runtimeSession]);
 
   const startSession = useCallback(() => {
     engineRef.current.startSession(performance.now());
@@ -270,7 +268,7 @@ engineRef.current.loadSession(runtimeSession);
 
             <div style={styles.buttonRow}>
               <button onClick={loadSession} style={styles.secondaryButton}>
-                Load Demo Session
+                Reload Session
               </button>
 
               <button
@@ -318,6 +316,9 @@ engineRef.current.loadSession(runtimeSession);
                   isCameraOn,
                   isRunning,
                   sessionLoaded,
+                  builderSessionName: session?.name ?? null,
+                  builderStepCount: session?.steps.length ?? 0,
+                  runtimeSessionTitle: sessionState.session?.title ?? null,
                   sessionStatus: sessionState.status,
                   currentExercise: sessionState.currentItem?.exercise.title ?? null,
                   currentIndex: sessionState.progress.currentIndex,
