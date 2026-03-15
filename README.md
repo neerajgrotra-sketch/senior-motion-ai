@@ -4,7 +4,7 @@ This branch is to build the session- Working well. After building session, camer
 After this we will focus on UI/ UX on session runner and we will create another branch
 What we’ll design on this branch
 
-We’re going to define the MVP session system with these concepts:
+ww We’re going to define the MVP session system with these concepts:
 
 Session builder
 
