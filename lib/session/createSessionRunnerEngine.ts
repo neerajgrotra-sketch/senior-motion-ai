@@ -1,5 +1,3 @@
-// lib/session/createSessionRunnerEngine.ts
-
 import { BiomechanicsFrame } from "../biomechanics/biomechanicsTypes";
 import { createRuntimeEngine } from "../runtime/createRuntimeEngine";
 import { RuntimeFrameResult } from "../runtime/runtimeTypes";
@@ -108,11 +106,11 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
     lastCountedRepTotal = 0;
   }
 
-  function startSession(startTimestampMs?: number) {
+  function startSession(_startTimestampMs?: number) {
     const currentItem = state.currentItem;
     if (!state.session || !currentItem) return;
 
-    const startedAt = startTimestampMs ?? Date.now();
+    const startedAt = Date.now();
 
     state = {
       ...state,
@@ -168,12 +166,13 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
     };
   }
 
-  function advanceToNextExercise(frameTimestampMs: number): boolean {
+  function advanceToNextExercise(): boolean {
     if (!state.session || !state.currentItem) return false;
 
     const completedId = state.currentItem.id;
     const nextIndex = state.progress.currentIndex + 1;
     const nextItem = state.session.items[nextIndex] ?? null;
+    const now = Date.now();
 
     if (!nextItem) {
       state = {
@@ -187,12 +186,12 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
             completedId,
           ],
           currentIndex: nextIndex,
-          sessionEndedAtMs: frameTimestampMs,
+          sessionEndedAtMs: now,
         },
         transition: {
           isTransitioning: true,
           transitionReason: "session_completed",
-          startedAtMs: frameTimestampMs,
+          startedAtMs: now,
         },
         poseLoopActive: true,
       };
@@ -210,12 +209,12 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
           completedId,
         ],
         currentIndex: nextIndex,
-        currentExerciseStartedAtMs: frameTimestampMs,
+        currentExerciseStartedAtMs: now,
       },
       transition: {
         isTransitioning: true,
         transitionReason: "next_exercise",
-        startedAtMs: frameTimestampMs,
+        startedAtMs: now,
       },
       poseLoopActive: true,
     };
@@ -268,7 +267,7 @@ export function createSessionRunnerEngine(): SessionRunnerEngine {
     let justCompletedSession = false;
 
     if (runtimeResult.status === "completed") {
-      const advanced = advanceToNextExercise(frame.timestampMs);
+      const advanced = advanceToNextExercise();
       justAdvancedExercise = advanced;
       justCompletedSession = !advanced && state.status === "completed";
     } else {
