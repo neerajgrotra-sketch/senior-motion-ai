@@ -93,8 +93,8 @@ export type LiveIntentState = {
   startedAtMs?: number;
   updatedAtMs?: number;
 
-  repCount?: number;
-  repInProgress?: boolean;
+  repCount: number;
+  repInProgress: boolean;
   repStartedAtMs?: number;
   reachedTargetAtMs?: number;
   returnStartedAtMs?: number;
