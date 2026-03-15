@@ -1,143 +1,90 @@
-export type ExercisePosture = 'seated' | 'standing'
-export type ExerciseSide = 'left' | 'right' | 'bilateral'
-export type TargetJointArea = 'shoulder' | 'hip' | 'knee' | 'trunk'
+// lib/exercises/exerciseTypes.ts
 
-export type LandmarkName =
-  | 'nose'
-  | 'left_eye'
-  | 'right_eye'
-  | 'left_ear'
-  | 'right_ear'
-  | 'left_shoulder'
-  | 'right_shoulder'
-  | 'left_elbow'
-  | 'right_elbow'
-  | 'left_wrist'
-  | 'right_wrist'
-  | 'left_hip'
-  | 'right_hip'
-  | 'left_knee'
-  | 'right_knee'
-  | 'left_ankle'
-  | 'right_ankle'
+import { PostureType, PoseSide } from "../pose/poseTypes";
+import { BiomechanicsFrame } from "../biomechanics/biomechanicsTypes";
 
-export type PosePoint = {
-  x: number
-  y: number
-  z?: number
-  score?: number
+export type ExerciseCategory =
+  | "upper_body"
+  | "lower_body"
+  | "balance"
+  | "mobility"
+  | "posture"
+  | "rehab";
+
+export type ExerciseSideMode = "left" | "right" | "bilateral" | "either" | "none";
+
+export type ExerciseIntentPhase =
+  | "idle"
+  | "ready"
+  | "moving_up"
+  | "at_top"
+  | "moving_down"
+  | "rep_complete"
+  | "completed"
+  | "error";
+
+export interface ExerciseThresholds {
+  minLiftNormalized?: number;
+  minShoulderFlexionDeg?: number;
+  maxTorsoLeanDeg?: number;
+  minElbowExtensionDeg?: number;
+  minHoldMs?: number;
+  minRepGapMs?: number;
 }
 
-export type PoseLandmarks = Partial<Record<LandmarkName, PosePoint>>
-
-export type SignalType =
-  | 'relative_y'
-  | 'relative_x'
-  | 'distance'
-  | 'joint_angle'
-  | 'torso_lean'
-  | 'velocity'
-
-export type SignalDefinition = {
-  id: string
-  type: SignalType
-  label: string
-  config: Record<string, unknown>
+export interface ExerciseCoachingRule {
+  code:
+    | "lift_higher"
+    | "lower_slowly"
+    | "keep_torso_upright"
+    | "straighten_elbow"
+    | "hold_position"
+    | "good_rep"
+    | "switch_side"
+    | "reset_position";
+  priority: number;
+  message: string;
 }
 
-export type ExerciseIntentModel = {
-  id: string
-
-  presentation: {
-    name: string
-    instruction: string
-    targetReps: number
-    posture: ExercisePosture
-    side: ExerciseSide
-  }
-
-  objective: {
-    goal: string
-    targetJointArea: TargetJointArea
-  }
-
-  landmarks: {
-    tracked: LandmarkName[]
-  }
-
-  signals: SignalDefinition[]
-
-  signalRefs: {
-    primaryLiftSignalId: string
-    oppositeLiftSignalId?: string
-    trunkLeanSignalId?: string
-  }
-
-  thresholds: {
-    startMax: number
-    targetMin: number
-    holdDurationMs: number
-    minRepDurationMs: number
-    maxRepDurationMs: number
-    maxTrunkLeanDeg?: number
-    controlledReturnMinMs: number
-  }
-
-  errors: {
-    detectWrongSide: boolean
-    detectInsufficientRange: boolean
-    detectNoHold: boolean
-    detectTooFast: boolean
-    detectTrunkLean: boolean
-  }
-
-  coaching: {
-    intro: string
-    start: string
-    wrongSide: string
-    insufficientRange: string
-    noHold: string
-    tooFast: string
-    trunkLean: string
-    success: string
-    completedExercise: string
-  }
+export interface ExerciseDefinition {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  category: ExerciseCategory;
+  sideMode: ExerciseSideMode;
+  targetPosture: PostureType | "either";
+  repTargetDefault: number;
+  thresholds: ExerciseThresholds;
+  coachingRules: ExerciseCoachingRule[];
 }
 
-export type ExerciseMotionState =
-  | 'ready'
-  | 'lifting'
-  | 'at_target'
-  | 'holding'
-  | 'lowering'
-  | 'completed'
-
-export type IntentErrorCode =
-  | 'wrong_side'
-  | 'insufficient_range'
-  | 'no_hold'
-  | 'too_fast'
-  | 'trunk_lean'
-
-export type LiveIntentState = {
-  exerciseId: string
-  motionState: ExerciseMotionState
-  repCount: number
-  repInProgress: boolean
-  repStartedAtMs?: number
-  reachedTargetAtMs?: number
-  returnStartedAtMs?: number
-  lastRepCompletedAtMs?: number
-  feedbackMessage: string
-  latestSignals: Record<string, number>
-  lastErrorCode?: IntentErrorCode
-  completed: boolean
+export interface ExerciseEvaluationContext {
+  exercise: ExerciseDefinition;
+  side: PoseSide | null;
+  frame: BiomechanicsFrame;
+  elapsedMs: number;
+  repCount: number;
+  phase: ExerciseIntentPhase;
+  lastRepTimestampMs: number | null;
 }
 
-export type IntentEvaluationResult = {
-  nextState: LiveIntentState
-  repCompleted: boolean
-  detectedErrorCode?: IntentErrorCode
-  feedbackMessage: string
-  signals: Record<string, number>
+export interface ExerciseFormFlags {
+  goodPosture: boolean;
+  enoughLift: boolean;
+  elbowAcceptable: boolean;
+  movementDetected: boolean;
+  bodyVisible: boolean;
+}
+
+export interface ExerciseEvaluationResult {
+  detected: boolean;
+  phase: ExerciseIntentPhase;
+  repIncrement: 0 | 1;
+  repJustCompleted: boolean;
+  formFlags: ExerciseFormFlags;
+  activeSide: PoseSide | null;
+  confidence: number;
+  coachingCodes: string[];
+  debug: Record<string, number | string | boolean | null>;
 }
