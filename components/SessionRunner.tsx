@@ -67,7 +67,7 @@ export default function SessionRunner({ session, onFinish, onAbort }: Props) {
         await startCamera();
       }
 
-      engineRef.current.startSession(performance.now());
+      engineRef.current.startSession();
       setSessionState(engineRef.current.getState());
     } catch (error) {
       console.error("Failed to start session:", error);
